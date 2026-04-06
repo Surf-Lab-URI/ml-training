@@ -293,4 +293,4 @@ if __name__ == "__main__":
     )
 
 # to run:
-# python image_gen.py combined.npz
+# python image_gen.py combined.npz --dt *simulation time step* --Dt *desired time step between A and B in the image pair* 
