@@ -207,32 +207,32 @@ def _read_particle_frame(h5, frame_ds):
     """
     Read one particle frame dataset that has fields x,y,(z).
     """
-    rec = frame_ds[()]  # likely a scalar compound dtype with fields
-    # rec might be a numpy.void with named fields
-    if not hasattr(rec, "dtype") or rec.dtype.names is None:
+    if frame_ds.dtype.names is None:
         raise ValueError(
-            "Frame dataset {} is not a compound dtype with fields; dtype={}".format(
-                frame_ds.name, getattr(rec, "dtype", None)
+            "Frame dataset {} is not a compound dtype. dtype={}".format(
+                frame_ds.name, frame_ds.dtype
             )
         )
 
-    names = set(rec.dtype.names)
+    names = set(frame_ds.dtype.names)
     if "x" not in names or "y" not in names:
         raise ValueError(
             "Frame dataset {} missing x/y fields. Has: {}".format(
-                frame_ds.name, rec.dtype.names
+                frame_ds.name, frame_ds.dtype.names
             )
         )
 
-    x_raw = rec["x"]
-    y_raw = rec["y"]
-    z_raw = rec["z"] if "z" in names else None
+    # Read fields individually (works with JLD2 object types)
+    x_raw = frame_ds.fields("x")[()]
+    y_raw = frame_ds.fields("y")[()]
+    z_raw = frame_ds.fields("z")[()] if "z" in names else None
 
+    # Dereference if needed
     x = _deref_if_needed(h5, x_raw).astype(np.float64, copy=False)
     y = _deref_if_needed(h5, y_raw).astype(np.float64, copy=False)
     z = _deref_if_needed(h5, z_raw).astype(np.float64, copy=False) if z_raw is not None else None
 
-    # Ensure 1D
+    # Flatten to 1D
     x = np.ravel(x)
     y = np.ravel(y)
     if z is not None:

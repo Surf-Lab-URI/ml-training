@@ -114,7 +114,9 @@ def build_dataset_from_npz(
     sigma_px=1.2,
     peak=1.0,
     clip_max=3.0,
-    max_pairs=100
+    max_pairs=100,
+    dt = 0.1,
+    Dt = 0.1
 ):
     """Generate particle image pairs plus pair-aligned particle positions and background fields.
 
@@ -176,27 +178,20 @@ def build_dataset_from_npz(
     Ny = max(int(field_a.shape[1]), int(field_b.shape[1]))
     Nx = max(int(field_a.shape[2]), int(field_b.shape[2]))
 
-    positions_pairs = np.empty((n_pairs, 2, k_eff, 2), dtype=np.float32)
-    times_pairs = np.empty((n_pairs, 2), dtype=np.float32)
     field_pairs = np.empty((n_pairs, 2, 2, Ny, Nx), dtype=np.float32)
 
     for p in range(n_pairs):
-        # Non-overlapping pairs: (0,1), (2,3), (4,5), ...
-        fA = 2 * p
-        fB = 2 * p + 1
+        # Image pairs
+        fA = p
+        fB = p + int(round(Dt/dt))
+
+        if fB >= n_frames:
+            break
 
         xA = X[fA, idx].astype(np.float32, copy=False)
         yA = Y[fA, idx].astype(np.float32, copy=False)
         xB = X[fB, idx].astype(np.float32, copy=False)
         yB = Y[fB, idx].astype(np.float32, copy=False)
-
-        positions_pairs[p, 0, :, 0] = xA
-        positions_pairs[p, 0, :, 1] = yA
-        positions_pairs[p, 1, :, 0] = xB
-        positions_pairs[p, 1, :, 1] = yB
-
-        times_pairs[p, 0] = t[fA]
-        times_pairs[p, 1] = t[fB]
 
         fa0 = _fit_field_2d(field_a[fA], Ny, Nx).astype(np.float32, copy=False)
         fb0 = _fit_field_2d(field_b[fA], Ny, Nx).astype(np.float32, copy=False)
@@ -227,17 +222,11 @@ def build_dataset_from_npz(
         imageio.imwrite(os.path.join(images_dir, "pair_{:06d}_a.png".format(p)), uA_img)
         imageio.imwrite(os.path.join(images_dir, "pair_{:06d}_b.png".format(p)), uB_img)
 
-    np.save(os.path.join(out_dir, "positions_pairs.npy"), positions_pairs)
-    np.save(os.path.join(out_dir, "times_pairs.npy"), times_pairs)
     np.save(os.path.join(out_dir, "field_pairs.npy"), field_pairs)
-    np.save(os.path.join(out_dir, "idx.npy"), idx)
 
     np.savez_compressed(
         os.path.join(out_dir, "dataset.npz"),
-        positions_pairs=positions_pairs,
-        times_pairs=times_pairs,
-        field_pairs=field_pairs,
-        idx=idx,
+        field_pairs=field_pairs
     )
 
     meta = {
@@ -255,9 +244,7 @@ def build_dataset_from_npz(
         "peak": float(peak),
         "clip_max": float(clip_max),
         "field_shape": [int(Ny), int(Nx)],
-        "positions_pairs_shape": list(positions_pairs.shape),
-        "field_pairs_shape": list(field_pairs.shape),
-        "times_pairs_shape": list(times_pairs.shape),
+        "field_pairs_shape": list(field_pairs.shape)
     }
 
     with open(os.path.join(out_dir, "meta.json"), "w") as f:
@@ -284,6 +271,8 @@ if __name__ == "__main__":
     ap.add_argument("--peak", type=float, default=1.0)
     ap.add_argument("--clip_max", type=float, default=3.0)
     ap.add_argument("--max_pairs", type=int, default=100)
+    ap.add_argument("--dt", type=float, default=0.1, help="simulation output time step")
+    ap.add_argument("--Dt", type=float, default=0.1, help="defined time step between A and B in the image pair")
     args = ap.parse_args()
 
     build_dataset_from_npz(
@@ -299,7 +288,9 @@ if __name__ == "__main__":
         peak=args.peak,
         clip_max=args.clip_max,
         max_pairs=args.max_pairs,
+        dt=args.dt,
+        Dt=args.Dt
     )
 
 # to run:
-# python image_gen.py particles.npz
+# python image_gen.py combined.npz
