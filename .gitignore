@@ -3,5 +3,7 @@
 *.jld2
 *.png
 ml_dataset/
+*.mp4
+videos/
 
 
