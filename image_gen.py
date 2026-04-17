@@ -7,9 +7,9 @@ import numpy as np
 
 
 def render_particles_gaussian(x, y,
-                              width=512, height=512,
-                              xlim=(0.0, 2*np.pi),
-                              ylim=(0.0, 2*np.pi),
+                              width=256, height=256,
+                              xlim=(0.0, 255),
+                              ylim=(0.0, 255),
                               sigma_px=1.2,
                               peak=1.0,
                               background=0.0):
@@ -107,10 +107,10 @@ def build_dataset_from_npz(
     out_dir="ml_dataset",
     k=2000,
     seed=42,
-    width=512,
-    height=512,
-    xlim=(0.0, 2*np.pi),
-    ylim=(0.0, 2*np.pi),
+    width=256,
+    height=256,
+    xlim=(0.0, 255),
+    ylim=(0.0, 255),
     sigma_px=1.2,
     peak=1.0,
     clip_max=3.0,
@@ -198,10 +198,13 @@ def build_dataset_from_npz(
         fa1 = _fit_field_2d(field_a[fB], Ny, Nx).astype(np.float32, copy=False)
         fb1 = _fit_field_2d(field_b[fB], Ny, Nx).astype(np.float32, copy=False)
 
-        field_pairs[p, 0, 0] = fa0
-        field_pairs[p, 0, 1] = fb0
-        field_pairs[p, 1, 0] = fa1
-        field_pairs[p, 1, 1] = fb1
+        # writing fields to big array. For PIV fa0 is u at initial time, 
+        # fb0 is v at initial time, etc. and they are muliplied by int(round(Dt/dt))*dt
+        # so that the units are pixels per pair, assuming unit of length was already pixels.
+        field_pairs[p, 0, 0] = fa0*(fB-fA)*dt
+        field_pairs[p, 0, 1] = fb0*(fB-fA)*dt
+        field_pairs[p, 1, 0] = fa1*(fB-fA)*dt
+        field_pairs[p, 1, 1] = fb1*(fB-fA)*dt
 
         imgA = render_particles_gaussian(
             xA, yA,
@@ -221,6 +224,7 @@ def build_dataset_from_npz(
 
         imageio.imwrite(os.path.join(images_dir, "pair_{:06d}_a.png".format(p)), uA_img)
         imageio.imwrite(os.path.join(images_dir, "pair_{:06d}_b.png".format(p)), uB_img)
+        np.save(os.path.join(images_dir, "pair_{:06d}_flow.npy".format(p)), field_pairs[p])
 
     np.save(os.path.join(out_dir, "field_pairs.npy"), field_pairs)
 
@@ -261,12 +265,12 @@ if __name__ == "__main__":
     ap.add_argument("--out_dir", default="ml_dataset")
     ap.add_argument("--k", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--width", type=int, default=512)
-    ap.add_argument("--height", type=int, default=512)
+    ap.add_argument("--width", type=int, default=256)
+    ap.add_argument("--height", type=int, default=256)
     ap.add_argument("--x0", type=float, default=0.0)
-    ap.add_argument("--x1", type=float, default=float(2 * np.pi))
+    ap.add_argument("--x1", type=float, default=255)
     ap.add_argument("--y0", type=float, default=0.0)
-    ap.add_argument("--y1", type=float, default=float(2 * np.pi))
+    ap.add_argument("--y1", type=float, default=255)
     ap.add_argument("--sigma_px", type=float, default=1.2)
     ap.add_argument("--peak", type=float, default=1.0)
     ap.add_argument("--clip_max", type=float, default=3.0)
