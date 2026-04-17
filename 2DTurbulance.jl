@@ -9,7 +9,9 @@ using Oceananigans.BoundaryConditions: fill_halo_regions!
 
 # Grid Setup
 
-grid = RectilinearGrid(size=(256, 256), extent=(2π, 2π), topology=(Periodic, Periodic, Flat))
+N = 256
+M = 256
+grid = RectilinearGrid(size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
 
 # Particle Setup
 # Seed one particle at the center of each (x, y) grid cell.
@@ -32,7 +34,7 @@ lagrangian_particles = LagrangianParticles(; x = x₀, y = y₀, z = z₀)
 # Model Setup
 
 model = NonhydrostaticModel(grid;
-                            advection = UpwindBiased(order=5),
+                            advection = WENO(order=5),
                             closure = ScalarDiffusivity(ν=1e-5),
                             particles = lagrangian_particles)
 
@@ -40,28 +42,23 @@ model = NonhydrostaticModel(grid;
 
 u, v, w = model.velocities
 
-x = 0:255
-y = 0:255
-
-N = 256
-M = 256
-
 a = rand(M,N)
 k(n) = 2*π*(n-1)/N
 l(m) = 2*π*(m-1)/M
 ϕ = rand(M,N)*2*π
-A = 1 #Amplitude of a long wave added at the end to create jets.
+A = 1000 #Amplitude of a long wave added at the end to create jets.
 
 # ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(k(2)*x -ϕ[2,1]) 
-ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + A*cos(l(2)*y - ϕ[1,2]) # this works
-# ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
-ψᵢ = ψ.(x,y')
+ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21) + A*cos(l(2)*y - ϕ[1,2]) # this works
+# ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-2 #+ cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
+# ψᵢ = ψ.(x,y')
 ψf = CenterField(grid)
-set!(ψf, ψᵢ)
+set!(ψf, ψ)
 fill_halo_regions!(ψf)
 
 uᵢ = ∂y(ψf)
 vᵢ = -∂x(ψf)
+
 
 set!(model, u=uᵢ, v=vᵢ)
 
@@ -71,6 +68,7 @@ sᵢ = Field(sqrt(u^2 + v^2))
 compute!(sᵢ)
 
 s₂ = dropdims(interior(sᵢ); dims=3)
+
 
 figᵢ = Figure(size = (800, 500))
 
@@ -82,9 +80,11 @@ save("initial_velocity.png", figᵢ)
 
 # Setting Up Simulation
 
-simulation = Simulation(model, Δt=0.1, stop_time=10)
+sₘ = maximum(s₂)
+tcfl = 0.5*grid.Δxᶠᵃᵃ/sₘ
+simulation = Simulation(model, Δt=tcfl, stop_time=50)
 
-wizard = TimeStepWizard(cfl=0.7, max_change=1.1, max_Δt=0.5)        # The TimeStepWizard helps ensure stable time-stepping with a Courant-Freidrichs-Lewy (CFL) number of 0.7.
+wizard = TimeStepWizard(cfl=0.7, max_change=1.1, max_Δt=2*tcfl)        # The TimeStepWizard helps ensure stable time-stepping with a Courant-Freidrichs-Lewy (CFL) number of 0.7.
 simulation.callbacks[:wizard] = Callback(wizard, IterationInterval(10))
 
 # Logging Simulation Progress
@@ -109,13 +109,13 @@ s = sqrt(u^2 + v^2)
 
 filename = "2D_Turbulance(particles)"
 
-simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u ,v),
-                                                schedule = TimeInterval(0.2),
+simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v),
+                                                schedule = TimeInterval(tcfl*2),
                                                 filename = filename * ".jld2",
                                                 overwrite_existing = true)
 
 simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.particles),
-                                                schedule = TimeInterval(0.2),                      
+                                                schedule = TimeInterval(tcfl*2),                      
                                                 filename = filename * "_particles.jld2",
                                                 overwrite_existing = true)
 
@@ -136,7 +136,7 @@ fig = Figure(size = (800, 500))
 
 axis_kwargs = (xlabel = "x",
                ylabel = "y",
-               limits = ((0, 2π), (0, 2π)),
+               limits = ((0, N), (0, M)),
                aspect = AxisAspect(1))
 
 ax_ω = Axis(fig[2, 1]; title = "Vorticity", axis_kwargs...)
@@ -178,7 +178,7 @@ n = Observable(1)
 ω = @lift ω_timeseries[$n]
 s = @lift s_timeseries[$n]
 
-hmω = heatmap!(ax_ω, ω; colormap = :balance, colorrange = (-2, 2))
+hmω = heatmap!(ax_ω, ω; colormap = :balance, colorrange = (-1, 1))
 
 px = Observable(Float64[])
 py = Observable(Float64[])
@@ -189,7 +189,7 @@ scatter!(ax_ω, px, py;
     color = :green,
     strokecolor = :green)
 
-hms = heatmap!(ax_s, s; colormap = :speed, colorrange = (0, 0.2))
+hms = heatmap!(ax_s, s; colormap = :speed, colorrange = (0, 2))
 
 Colorbar(fig[2, 2], hmω, label = "ω")
 Colorbar(fig[2, 4], hms, label = "s")
@@ -201,7 +201,7 @@ fig
 
 # Recording Movie
 
-frames = 1:length(times)
+# frames = 1:length(times)
 
 # @info "Making animation of vorticity and speed..."
 
