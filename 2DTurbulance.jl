@@ -6,6 +6,10 @@ using StructArrays
 using JLD2
 using DataFrames
 using Oceananigans.BoundaryConditions: fill_halo_regions!
+using Dates
+
+out_dir = "./out/"
+mkpath(out_dir)
 
 # Grid Setup
 
@@ -47,9 +51,11 @@ k(n) = 2*π*(n-1)/N
 l(m) = 2*π*(m-1)/M
 ϕ = rand(M,N)*2*π
 A = 1000 #Amplitude of a long wave added at the end to create jets.
-
+nmax = 21
+mmax = 21
+mjet = 2
 # ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(k(2)*x -ϕ[2,1]) 
-ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21) + A*cos(l(2)*y - ϕ[1,2]) # this works
+ψ(x,y) = sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax) + A*cos(l(mjet)*y - ϕ[1,2]) # this works
 # ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-2 #+ cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
 # ψᵢ = ψ.(x,y')
 ψf = CenterField(grid)
@@ -107,16 +113,20 @@ div = ∂x(u) + ∂y(v)
 
 s = sqrt(u^2 + v^2)
 
-filename = "2D_Turbulance(particles)"
+dt = tcfl*5
+
+filename = "$(now(UTC))_2DT-A$(A)-nmax$(nmax)-mjet$(mjet)"
 
 simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v),
-                                                schedule = TimeInterval(tcfl*2),
-                                                filename = filename * ".jld2",
+                                                schedule = TimeInterval(dt),
+                                                filename = out_dir * filename * ".jld2",
+                                                with_halos = false,
                                                 overwrite_existing = true)
 
 simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.particles),
-                                                schedule = TimeInterval(tcfl*2),                      
-                                                filename = filename * "_particles.jld2",
+                                                schedule = TimeInterval(dt),
+                                                with_halos = false,                      
+                                                filename = out_dir*filename * "_particles.jld2",
                                                 overwrite_existing = true)
 
 # Running Simulation 
@@ -125,8 +135,8 @@ run!(simulation)
 
 # Visualizing Results
 
-ω_timeseries = FieldTimeSeries(filename * ".jld2", "ω")
-s_timeseries = FieldTimeSeries(filename * ".jld2", "s")
+ω_timeseries = FieldTimeSeries(out_dir * filename * ".jld2", "ω")
+s_timeseries = FieldTimeSeries(out_dir * filename * ".jld2", "s")
 
 times = ω_timeseries.times
 
@@ -145,7 +155,7 @@ xlims!(ax_ω, minimum(xnodes(grid, Center())), maximum(xnodes(grid, Center())))
 ylims!(ax_ω, minimum(ynodes(grid, Center())), maximum(ynodes(grid, Center())))
 
 # Load particle output file
-pfile = jldopen(filename * "_particles.jld2", "r")
+pfile = jldopen(out_dir * filename * "_particles.jld2", "r")
 
 ts = pfile["timeseries"]
 pts = ts["particles"]
@@ -197,20 +207,32 @@ Colorbar(fig[2, 4], hms, label = "s")
 title = @lift "t = " * string(round(times[$n], digits=2))
 Label(fig[1, 1:2], title, fontsize=24, tellwidth=false)
 
+fullfname = out_dir * filename * ".jld2"
+fullfname_particles = out_dir * filename * "_particles.jld2"
+combined_name = out_dir * filename * ".npz"
+current_dir = pwd()
+
+# run(`conda init`)
+run(`bash -c "
+     conda init
+     conda activate ml-training
+     cd $current_dir
+     python load_jld2_particles.py $fullfname_particles --fields_path $fullfname --field_a u --field_b v --export_imagegen_npz $combined_name"`)
+
 fig
 
 # Recording Movie
 
-# frames = 1:length(times)
+frames = 1:length(times)
 
-# @info "Making animation of vorticity and speed..."
+@info "Making animation of vorticity and speed..."
 
-# record(fig, filename * ".mp4", frames, framerate=24) do i
-#     n[] = i
-#     x, y = read_xy_at_frame(pts, pkeys, i)
-#     px[] = x
-#     py[] = y
+record(fig, filename * ".mp4", frames, framerate=24) do i
+    n[] = i
+    x, y = read_xy_at_frame(pts, pkeys, i)
+    px[] = x
+    py[] = y
 
-# end
+end
 
 @info "Done"
