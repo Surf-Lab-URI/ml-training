@@ -2,8 +2,10 @@
 *.npz
 *.jld2
 *.png
+*.json
 ml_dataset/
 *.mp4
 videos/
+.DS_Store
 
 
