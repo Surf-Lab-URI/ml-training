@@ -1,3 +1,6 @@
+using DrWatson
+@quickactivate "ml-training"
+
 using Oceananigans
 using Statistics
 using Printf
@@ -50,7 +53,7 @@ a = rand(M,N)
 k(n) = 2*π*(n-1)/N
 l(m) = 2*π*(m-1)/M
 ϕ = rand(M,N)*2*π
-A = 1000 #Amplitude of a long wave added at the end to create jets.
+A = 500 #Amplitude of a long wave added at the end to create jets.
 nmax = 21
 mmax = 21
 mjet = 2
@@ -214,7 +217,7 @@ current_dir = pwd()
 
 # run(`conda init`)
 run(`bash -c "
-     conda init
+     source activate base
      conda activate ml-training
      cd $current_dir
      python load_jld2_particles.py $fullfname_particles --fields_path $fullfname --field_a u --field_b v --export_imagegen_npz $combined_name"`)
