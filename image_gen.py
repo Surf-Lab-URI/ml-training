@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 from pathlib import Path
 import pathlib
+import time
 
 
 def render_particles_gaussian(x, y,
@@ -271,6 +272,8 @@ def build_dataset_from_npz(
 
 
 if __name__ == "__main__":
+    start_time = time.perf_counter()
+
     ap = argparse.ArgumentParser(
         description="Generate particle image pairs + aligned fields from a combined NPZ."
     )
@@ -327,6 +330,9 @@ if __name__ == "__main__":
             max_pairs=args.max_pairs,
             pix=args.pix
         )
+        
+    end_time = time.perf_counter()
+    print(f"Execution time: {end_time - start_time:.4f} seconds")
 
 # to run:
 # python image_gen.py --input_dir ./out --out_dir ./ds_test --pix 10
