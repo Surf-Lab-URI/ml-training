@@ -7,5 +7,6 @@ ml_dataset/
 *.mp4
 videos/
 .DS_Store
-
+*.out
+sh/
 
