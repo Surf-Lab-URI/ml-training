@@ -71,10 +71,13 @@ Ny = length(ys)
 
 # All combinations of cell-center coordinates:
 # x varies fastest, y varies slowest.
-Δxₚ = 4
-x₀ = repeat(xs[1:Δxₚ:end], outer = Ny)
-y₀ = repeat(ys[1:Δxₚ:end], inner = Nx)
-Nparticles = length(x₀)
+# Δxₚ = 4
+# x₀ = repeat(xs[1:Δxₚ:end], outer = Ny)
+# y₀ = repeat(ys[1:Δxₚ:end], inner = Nx)
+# Nparticles = length(x₀)
+Nparticles = Int(M*N/16)
+x₀ = rand(Nparticles)*M
+y₀ = rand(Nparticles)*N
 z₀ = zeros(Nparticles)
 
 lagrangian_particles = LagrangianParticles(; x = CuArray(x₀), y = CuArray(y₀), z = CuArray(z₀))
@@ -94,12 +97,13 @@ a = rand(M,N)
 k(n) = 2*π*(n-1)/N
 l(m) = 2*π*(m-1)/M
 ϕ = rand(M,N)*2*π
+ϕⱼ = rand()*2*π
 A = parsed_args["jet_amp"] #Amplitude of a long wave added at the end to create jets.
 nmax = parsed_args["n_max"]
 mmax = parsed_args["n_max"]
 mjet = parsed_args["m_jet"]
 # ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(k(2)*x -ϕ[2,1]) 
-ψ(x,y) = sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax) + A*cos(l(mjet)*y - ϕ[1,2]) # this works
+ψ(x,y) = sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax) + A*cos(sin(ϕⱼ)*l(mjet)*y + cos(ϕⱼ)*k(mjet)*x - ϕ[1,2]) # this works
 # ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-2 #+ cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
 # ψᵢ = ψ.(x,y')
 ψf = CenterField(grid)
