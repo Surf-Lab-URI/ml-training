@@ -170,7 +170,7 @@ simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v),
                                                 overwrite_existing = true)
 
 
-                                                simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.particles),
+simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.particles),
                                                 schedule = TimeInterval(dt),
                                                 with_halos = false,                      
                                                 filename = out_dir*filename * "_particles.jld2",
