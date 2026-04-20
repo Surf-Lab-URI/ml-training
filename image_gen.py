@@ -168,8 +168,12 @@ def build_dataset_from_npz(
         raise ValueError("t length does not match number of frames")
     if field_a.shape[0] != n_frames or field_b.shape[0] != n_frames:
         raise ValueError("field_a/field_b first dimension must match n_frames")
+    
+    s = np.sqrt(field_a**2 + field_b**2)*dt
+    smax = np.max(s)
+    dp = max(1,int(pix/smax))
 
-    n_pairs = n_frames // 2
+    n_pairs = n_frames-dp
 
     # Choose fixed random subsample indices once
     rng = np.random.RandomState(seed)
@@ -184,17 +188,10 @@ def build_dataset_from_npz(
 
     field_pairs = np.empty((n_pairs, 2, 2, Ny, Nx), dtype=np.float32)
 
-    s = np.sqrt(field_a**2 + field_b**2)*dt
-    smax = np.max(s)
-    dp = max(1,int(pix/smax))
-
-    for p in range(n_pairs-dp):
+    for p in range(n_pairs):
         # Image pairs
         fA = p
         fB = p + dp
-
-        if fB >= n_frames:
-            break
 
         xA = X[fA, idx].astype(np.float32, copy=False)
         yA = Y[fA, idx].astype(np.float32, copy=False)
