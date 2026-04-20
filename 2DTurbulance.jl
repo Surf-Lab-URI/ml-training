@@ -5,7 +5,7 @@ using Oceananigans
 using Statistics
 using Printf
 using CairoMakie
-using GLMakie
+# using GLMakie
 using StructArrays
 using JLD2
 using DataFrames
@@ -172,7 +172,7 @@ s = sqrt(u^2 + v^2)
 
 filename = "$(now(UTC))_2DT-A$(A)-nmax$(nmax)-mjet$(mjet)"
 
-simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v, parsed_args),
+simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v), #, parsed_args), addition of parsed_args made sim crash
                                                 schedule = TimeInterval(dt),
                                                 filename = out_dir * filename * ".jld2",
                                                 with_halos = false,
