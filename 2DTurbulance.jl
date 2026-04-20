@@ -10,15 +10,52 @@ using JLD2
 using DataFrames
 using Oceananigans.BoundaryConditions: fill_halo_regions!
 using Dates
+using CUDA
+using ArgParse
+
+function parse_commandline()
+    s = ArgParseSettings()
+
+    @add_arg_table s begin
+        "--jet_amp", "-a"
+            help = "amplitude of jet mode in streamfunction"
+            arg_type = Float64
+            default = 500
+        "--n_max", "-n"
+            help = "number of modes in streamfunction"
+            arg_type = Int
+            default = 21
+        "--m_jet", "-j"
+            help = "wavenumber of horizontal jet"
+            arg_type = Int
+            default = 2
+        "--t_end", "-t"
+            help = "end time of simulation"
+            arg_type = Float64
+            default = nothing
+        "--nt"
+            help = "number of timesteps recorded"
+            arg_type = Int
+            default = 20
+    end
+
+    return parse_args(s)
+end
+
+parsed_args = parse_commandline()
+println("Parsed args:")
+for (arg,val) in parsed_args
+    println("  $arg  =>  $val")
+end
 
 out_dir = "./out/"
 mkpath(out_dir)
 
 # Grid Setup
 
-N = 256
-M = 256
-grid = RectilinearGrid(size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
+N = 512
+M = 512
+grid = RectilinearGrid(GPU(), size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
 
 # Particle Setup
 # Seed one particle at the center of each (x, y) grid cell.
@@ -28,15 +65,17 @@ ys = ynodes(grid, Center())
 
 Nx = length(xs)
 Ny = length(ys)
-Nparticles = Nx * Ny
+# Nparticles = Nx * Ny
 
 # All combinations of cell-center coordinates:
 # x varies fastest, y varies slowest.
-x₀ = repeat(xs, outer = Ny)
-y₀ = repeat(ys, inner = Nx)
+Δxₚ = 4
+x₀ = repeat(xs[1:Δxₚ:end], outer = Ny)
+y₀ = repeat(ys[1:Δxₚ:end], inner = Nx)
+Nparticles = length(x₀)
 z₀ = zeros(Nparticles)
 
-lagrangian_particles = LagrangianParticles(; x = x₀, y = y₀, z = z₀)
+lagrangian_particles = LagrangianParticles(; x = CuArray(x₀), y = CuArray(y₀), z = CuArray(z₀))
 
 # Model Setup
 
@@ -53,10 +92,10 @@ a = rand(M,N)
 k(n) = 2*π*(n-1)/N
 l(m) = 2*π*(m-1)/M
 ϕ = rand(M,N)*2*π
-A = 500 #Amplitude of a long wave added at the end to create jets.
-nmax = 21
-mmax = 21
-mjet = 2
+A = parsed_args["jet_amp"] #Amplitude of a long wave added at the end to create jets.
+nmax = parsed_args["n_max"]
+mmax = parsed_args["n_max"]
+mjet = parsed_args["m_jet"]
 # ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(k(2)*x -ϕ[2,1]) 
 ψ(x,y) = sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax) + A*cos(l(mjet)*y - ϕ[1,2]) # this works
 # ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-2 #+ cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
@@ -79,19 +118,25 @@ compute!(sᵢ)
 s₂ = dropdims(interior(sᵢ); dims=3)
 
 
-figᵢ = Figure(size = (800, 500))
+# figᵢ = Figure(size = (800, 500))
 
-axᵢ = Axis(figᵢ[1, 1], title = "initial velocity (mag)", xlabel = "x", ylabel = "y")
-hmᵢ = heatmap!(axᵢ, s₂, colormap = :viridis)
-Colorbar(figᵢ[1,2], hmᵢ, label = "|u|")
+# axᵢ = Axis(figᵢ[1, 1], title = "initial velocity (mag)", xlabel = "x", ylabel = "y")
+# hmᵢ = heatmap!(axᵢ, s₂, colormap = :viridis)
+# Colorbar(figᵢ[1,2], hmᵢ, label = "|u|")
 
-save("initial_velocity.png", figᵢ)
+# save("initial_velocity.png", figᵢ)
 
 # Setting Up Simulation
 
 sₘ = maximum(s₂)
 tcfl = 0.5*grid.Δxᶠᵃᵃ/sₘ
-simulation = Simulation(model, Δt=tcfl, stop_time=50)
+dt = tcfl*5
+if isnothing(parsed_args["t_end"])
+    st = parsed_args["nt"]*dt
+else
+    st = parsed_args["t_end"]
+end
+simulation = Simulation(model, Δt=tcfl, stop_time=st)
 
 wizard = TimeStepWizard(cfl=0.7, max_change=1.1, max_Δt=2*tcfl)        # The TimeStepWizard helps ensure stable time-stepping with a Courant-Freidrichs-Lewy (CFL) number of 0.7.
 simulation.callbacks[:wizard] = Callback(wizard, IterationInterval(10))
@@ -116,8 +161,6 @@ div = ∂x(u) + ∂y(v)
 
 s = sqrt(u^2 + v^2)
 
-dt = tcfl*5
-
 filename = "$(now(UTC))_2DT-A$(A)-nmax$(nmax)-mjet$(mjet)"
 
 simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v),
@@ -126,7 +169,8 @@ simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v),
                                                 with_halos = false,
                                                 overwrite_existing = true)
 
-simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.particles),
+
+                                                simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.particles),
                                                 schedule = TimeInterval(dt),
                                                 with_halos = false,                      
                                                 filename = out_dir*filename * "_particles.jld2",
@@ -226,16 +270,16 @@ fig
 
 # Recording Movie
 
-frames = 1:length(times)
+# frames = 1:length(times)
 
-@info "Making animation of vorticity and speed..."
+# @info "Making animation of vorticity and speed..."
 
-record(fig, filename * ".mp4", frames, framerate=24) do i
-    n[] = i
-    x, y = read_xy_at_frame(pts, pkeys, i)
-    px[] = x
-    py[] = y
+# Makie.record(fig, filename * ".mp4", frames, framerate=24) do i
+#     n[] = i
+#     x, y = read_xy_at_frame(pts, pkeys, i)
+#     px[] = x
+#     py[] = y
 
-end
+# end
 
 @info "Done"
