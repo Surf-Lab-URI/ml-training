@@ -5,6 +5,7 @@ using Oceananigans
 using Statistics
 using Printf
 using CairoMakie
+using GLMakie
 using StructArrays
 using JLD2
 using DataFrames
@@ -43,6 +44,7 @@ function parse_commandline()
 end
 
 parsed_args = parse_commandline()
+tag!(parsed_args)
 println("Parsed args:")
 for (arg,val) in parsed_args
     println("  $arg  =>  $val")
@@ -105,7 +107,10 @@ set!(ψf, ψ)
 fill_halo_regions!(ψf)
 
 uᵢ = ∂y(ψf)
+compute!(uᵢ)
+
 vᵢ = -∂x(ψf)
+compute!(vᵢ)
 
 
 set!(model, u=uᵢ, v=vᵢ)
@@ -163,7 +168,7 @@ s = sqrt(u^2 + v^2)
 
 filename = "$(now(UTC))_2DT-A$(A)-nmax$(nmax)-mjet$(mjet)"
 
-simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v),
+simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v, parsed_args),
                                                 schedule = TimeInterval(dt),
                                                 filename = out_dir * filename * ".jld2",
                                                 with_halos = false,
