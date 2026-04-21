@@ -13,6 +13,7 @@ using Oceananigans.BoundaryConditions: fill_halo_regions!
 using Dates
 using CUDA
 using ArgParse
+using SpecialFunctions
 
 function parse_commandline()
     s = ArgParseSettings()
@@ -106,8 +107,10 @@ A = parsed_args["jet_amp"] #Amplitude of a long wave added at the end to create 
 nmax = parsed_args["n_max"]
 mmax = parsed_args["n_max"]
 mjet = parsed_args["m_jet"]
+temp1 = rand()
+temp2 = rand()
 # ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(k(2)*x -ϕ[2,1]) 
-ψ(x,y) = sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax) + A*cos(sin(ϕⱼ)*l(mjet)*y + cos(ϕⱼ)*k(mjet)*x - ϕ[1,2]) # this works
+ψ(x,y) = temp1*A*5*erf((5-2*temp2)*(y-M/2)/M) + A*cos(l(round(mjet*sin(ϕⱼ)))*y + k(round(mjet*cos(ϕⱼ)))*x - ϕ[1,2]) +  sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax)
 # ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-2 #+ cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
 # ψᵢ = ψ.(x,y')
 ψf = CenterField(grid)
@@ -134,9 +137,9 @@ s₂ = dropdims(interior(sᵢ); dims=3)
 # figᵢ = Figure(size = (800, 500))
 
 # axᵢ = Axis(figᵢ[1, 1], title = "initial velocity (mag)", xlabel = "x", ylabel = "y")
-# hmᵢ = heatmap!(axᵢ, s₂, colormap = :viridis)
-# Colorbar(figᵢ[1,2], hmᵢ, label = "|u|")
-
+# hmᵢ = heatmap!(axᵢ, s₂, colormap = :viridis, colorrange=(0, 1))
+# # Makie.Colorbar(figᵢ[1,2], hmᵢ, label = "|u|")
+# figᵢ
 # save("initial_velocity.png", figᵢ)
 
 # Setting Up Simulation
@@ -248,7 +251,7 @@ n = Observable(1)
 ω = @lift ω_timeseries[$n]
 s = @lift s_timeseries[$n]
 
-hmω = heatmap!(ax_ω, ω; colormap = :balance, colorrange = (-1, 1))
+hmω = heatmap!(ax_ω, ω; colormap = :balance, colorrange = (-2, 2))
 
 px = Observable(Float64[])
 py = Observable(Float64[])
@@ -259,7 +262,7 @@ scatter!(ax_ω, px, py;
     color = :green,
     strokecolor = :green)
 
-hms = heatmap!(ax_s, s; colormap = :speed, colorrange = (0, 2))
+hms = heatmap!(ax_s, s; colormap = :speed, colorrange = (0, 5))
 
 Colorbar(fig[2, 2], hmω, label = "ω")
 Colorbar(fig[2, 4], hms, label = "s")
@@ -272,7 +275,6 @@ fullfname_particles = out_dir * filename * "_particles.jld2"
 combined_name = out_dir * filename * ".npz"
 current_dir = pwd()
 
-# run(`conda init`)
 run(`bash -c "
      source activate base
      conda activate ml-training
@@ -283,7 +285,7 @@ fig
 
 # Recording Movie
 
-# frames = 1:length(times)
+# frames = 1:5:length(times)
 
 # @info "Making animation of vorticity and speed..."
 
