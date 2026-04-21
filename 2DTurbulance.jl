@@ -38,6 +38,10 @@ function parse_commandline()
             help = "number of timesteps recorded"
             arg_type = Int
             default = 20
+        "--out_dir", "-o"
+            help = "output directory"
+            arg_type = String
+            default = "out/"
     end
 
     return parse_args(s)
@@ -50,7 +54,7 @@ for (arg,val) in parsed_args
     println("  $arg  =>  $val")
 end
 
-out_dir = "./out/"
+out_dir = parsed_args["out_dir"]
 mkpath(out_dir)
 
 # Grid Setup
