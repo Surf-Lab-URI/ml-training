@@ -22,7 +22,7 @@ function parse_commandline()
         "--jet_amp", "-a"
             help = "amplitude of jet mode in streamfunction"
             arg_type = Float64
-            default = 500
+            default = 300
         "--n_max", "-n"
             help = "number of modes in streamfunction"
             arg_type = Int
@@ -98,20 +98,19 @@ model = NonhydrostaticModel(grid;
 
 u, v, w = model.velocities
 
-a = rand(M,N)
+A = parsed_args["jet_amp"]*(1.5-rand()) #Amplitude of a long wave added at the end to create jets.
+nmax = parsed_args["n_max"]
+mmax = parsed_args["n_max"]
+mjet = parsed_args["m_jet"]
+
+a = rand(M,N)/(nmax^2)*(21^2) #amplitude of random modes increases if there are fewer of them
 k(n) = 2*π*(n-1)/N
 l(m) = 2*π*(m-1)/M
 ϕ = rand(M,N)*2*π
 ϕⱼ = rand()*2*π
-A = parsed_args["jet_amp"] #Amplitude of a long wave added at the end to create jets.
-nmax = parsed_args["n_max"]
-mmax = parsed_args["n_max"]
-mjet = parsed_args["m_jet"]
-temp1 = 0
-temp2 = 0
+
 # ψ(x,y) = sum(a[m,n]*cos(k(n-11)*x + l(m-11)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-3 + cos(k(2)*x -ϕ[2,1]) 
-ψ(x,y) = temp1*A*5*erf((5-2*temp2)*(y-M/2)/M) + A*cos(l(round(mjet*sin(ϕⱼ)))*y + k(round(mjet*cos(ϕⱼ)))*x - ϕ[1,2]) +  sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax)
-# ψ(x,y) = sum(a[m,n]*cos(k(n)*x + l(m)*y-ϕ[m,n]) for m in 1:21 for n in 1:21)*1e-2 #+ cos(l(2)*y -ϕ[1,2]) # this doesn't tend to run properly with no negative wavenumbers
+ψ(x,y) = A*cos(l(round(mjet*sin(ϕⱼ)))*y + k(round(mjet*cos(ϕⱼ)))*x - ϕ[1,2]) +  sum(a[m,n]*cos(k(n-floor(nmax/2+1))*x + l(m-floor(mmax/2+1))*y-ϕ[m,n]) for m in 1:mmax for n in 1:nmax)
 # ψᵢ = ψ.(x,y')
 ψf = CenterField(grid)
 set!(ψf, ψ)
@@ -137,7 +136,7 @@ s₂ = dropdims(interior(sᵢ); dims=3)
 # figᵢ = Figure(size = (800, 500))
 
 # axᵢ = Axis(figᵢ[1, 1], title = "initial velocity (mag)", xlabel = "x", ylabel = "y")
-# hmᵢ = heatmap!(axᵢ, s₂, colormap = :viridis, colorrange=(0, 1))
+# hmᵢ = heatmap!(axᵢ, s₂, colormap = :viridis)
 # # Makie.Colorbar(figᵢ[1,2], hmᵢ, label = "|u|")
 # figᵢ
 # save("initial_velocity.png", figᵢ)
@@ -146,7 +145,7 @@ s₂ = dropdims(interior(sᵢ); dims=3)
 
 sₘ = maximum(s₂)
 tcfl = 0.5*grid.Δxᶠᵃᵃ/sₘ
-dt = tcfl*5
+dt = tcfl*10
 if isnothing(parsed_args["t_end"])
     st = parsed_args["nt"]*dt
 else
