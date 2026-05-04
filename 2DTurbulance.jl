@@ -18,7 +18,7 @@ using SpecialFunctions
 function parse_commandline()
     s = ArgParseSettings()
 
-    @add_arg_table s begin
+    @add_arg_table! s begin
         "--jet_amp", "-a"
             help = "amplitude of jet mode in streamfunction"
             arg_type = Float64
@@ -50,13 +50,11 @@ end
 
 parsed_args = parse_commandline()
 tag!(parsed_args)
-println("Parsed args:")
-for (arg,val) in parsed_args
-    println("  $arg  =>  $val")
-end
 
-out_dir = parsed_args["out_dir"]
-mkpath(out_dir)
+
+
+#out_dir = parsed_args["out_dir"]
+#mkpath(out_dir)
 
 # Grid Setup
 
