@@ -2,9 +2,6 @@ using DrWatson
 @quickactivate "ml-training"
 
 using ArgParse
-using JLD2
-
-# Argparse
 
 function parse_commandline()
     s = ArgParseSettings()
@@ -42,9 +39,16 @@ end
 parsed_args = parse_commandline()
 tag!(parsed_args)
 
-# dr watson paths for orginization
+# Arguments used for defining random initial conditons 
 
+A = parsed_args["jet_amp"]*(1.5-rand()) #Amplitude of a long wave added at the end to create jets.
+nmax = parsed_args["n_max"]
+mmax = parsed_args["n_max"]
+mjet = parsed_args["m_jet"]
 
-
-# running scripts
-
+# Arguments used for defining simulation time and output
+if isnothing(parsed_args["t_end"])
+    st = parsed_args["nt"]*dt
+else
+    st = parsed_args["t_end"]
+end
