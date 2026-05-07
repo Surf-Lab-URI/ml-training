@@ -21,7 +21,8 @@ using SpecialFunctions
 
 N = 512
 M = 512
-grid = RectilinearGrid(GPU(), size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
+#grid = RectilinearGrid(GPU(), size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
+grid = RectilinearGrid(size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
 
 # ---Particle Setup---
 
@@ -30,7 +31,8 @@ x₀ = rand(Nparticles)*M
 y₀ = rand(Nparticles)*N
 z₀ = zeros(Nparticles)
 
-lagrangian_particles = LagrangianParticles(; x = CuArray(x₀), y = CuArray(y₀), z = CuArray(z₀))
+#lagrangian_particles = LagrangianParticles(; x = CuArray(x₀), y = CuArray(y₀), z = CuArray(z₀))
+lagrangian_particles = LagrangianParticles(; x = x₀, y = y₀, z = z₀)
 
 # ---Model Setup---
 
