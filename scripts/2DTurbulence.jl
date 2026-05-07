@@ -129,8 +129,8 @@ run!(simulation)
 # ---Visualizing Results---
 
 # loading vorticity and speed timeseries from JLD2 files
-ω_timeseries = FieldTimeSeries(out_dir * filename * ".jld2", "ω")
-s_timeseries = FieldTimeSeries(out_dir * filename * ".jld2", "s")
+ω_timeseries = FieldTimeSeries(out_dir * "fields" * vars * ".jld2", "ω")
+s_timeseries = FieldTimeSeries(out_dir * "fields" * vars * ".jld2", "s")
 
 times = ω_timeseries.times
 
@@ -160,6 +160,8 @@ function read_xy_at_frame(pts, pkeys, i)
     end
     
 end
+
+n = Observable(1)
 
 # animating results with Makie
 set_theme!(Theme(fontsize = 20))

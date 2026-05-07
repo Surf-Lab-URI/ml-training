@@ -22,7 +22,7 @@ function parse_commandline()
         "--t_end", "-t"
             help = "end time of simulation"
             arg_type = Float64
-            default = nothing
+            default = 23
         "--nt"
             help = "number of timesteps recorded"
             arg_type = Int
