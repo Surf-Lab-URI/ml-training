@@ -213,4 +213,12 @@ Label(fig[1, 1:2], title, fontsize=24, tellwidth=false)
 #     px[] = x
 #     py[] = y
 
+@info "Simulation complete. Now combining output files..."
+
+# --- Combining JLD2 Output Files ---
+
+run(`$(Base.julia_cmd()) $(projectdir() * "/src/CombineAndConquer.jl") -f $(out_dir * "fields" * vars * ".jld2") -p $(out_dir * "particles" * vars * ".jld2") -s $(vars)`)
+
+# --- Generating Image Pairs ---
+
 @info "Done"
