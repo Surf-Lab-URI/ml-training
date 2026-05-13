@@ -22,7 +22,7 @@ function parse_commandline()
         "--t_end", "-t"
             help = "end time of simulation"
             arg_type = Float64
-            default = 23
+            default = nothing
         "--nt"
             help = "number of timesteps recorded"
             arg_type = Int
@@ -31,6 +31,10 @@ function parse_commandline()
             help = "output directory"
             arg_type = String
             default = "out/"
+        "--automate", "-m"
+            help = "automate the entire process, from running the simulation to generating image pairs for training (overrides other arguments except for out_dir)"
+            arg_type = Bool
+            default = true
     end
 
     return parse_args(s)
@@ -45,6 +49,7 @@ A = parsed_args["jet_amp"]*(1.5-rand()) #Amplitude of a long wave added at the e
 nmax = parsed_args["n_max"]
 mmax = parsed_args["n_max"]
 mjet = parsed_args["m_jet"]
+automate = parsed_args["automate"]
 
 # Arguments used for defining simulation time and output
 if isnothing(parsed_args["t_end"])

@@ -15,8 +15,6 @@ using Dates
 using CUDA
 using SpecialFunctions
 
-
-
 # ---Grid Setup---
 
 N = 512
@@ -202,7 +200,8 @@ Colorbar(fig[2, 4], hms, label = "s")
 title = @lift "t = " * string(round(times[$n], digits=2))
 Label(fig[1, 1:2], title, fontsize=24, tellwidth=false)
 
-# Recording Movie
+# ---Recording Movie---
+
 # frames = 1:5:length(times)
 
 # @info "Making animation of vorticity and speed..."
@@ -218,7 +217,16 @@ Label(fig[1, 1:2], title, fontsize=24, tellwidth=false)
 # --- Combining JLD2 Output Files ---
 
 run(`$(Base.julia_cmd()) $(projectdir() * "/src/CombineAndConquer.jl") -f $(out_dir * "fields" * vars * ".jld2") -p $(out_dir * "particles" * vars * ".jld2") -s $(vars)`)
+@info "Output files combined. "
+@info "New file located at: $(out_dir * "combined" * vars * ".jld2")"
 
 # --- Generating Image Pairs ---
+
+if automate == true
+    @info "Generating image pairs..."
+    run(`$(Base.julia_cmd()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * "combined" * vars * ".jld2") -v $(vars) -p`)
+else
+    @info "Skipping image pair generation."
+end
 
 @info "Done"
