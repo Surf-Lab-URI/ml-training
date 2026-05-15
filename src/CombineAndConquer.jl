@@ -44,3 +44,7 @@ end
 combined_file = merge(prefix_keys("fields", fields), prefix_keys("particles", particles))
 
 jldsave(out_dir * "combined" * vars * ".jld2"; combined_file...)
+
+# removing old files
+rm(fields_file)
+rm(particles_file)

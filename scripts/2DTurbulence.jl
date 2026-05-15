@@ -105,6 +105,7 @@ s = sqrt(u^2 + v^2)
 
 # ---Simulation Output Writers---
 out_dir = projectdir() * "/data/binary/"
+mkpath(out_dir)
 vars = "_$(now(UTC))_2DT-A$(A)-nmax$(nmax)-mjet$(mjet)"
 
 simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v), #, parsed_args), addition of parsed_args made sim crash
@@ -224,7 +225,7 @@ run(`$(Base.julia_cmd()) $(projectdir() * "/src/CombineAndConquer.jl") -f $(out_
 
 if automate == true
     @info "Generating image pairs..."
-    run(`$(Base.julia_cmd()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * "combined" * vars * ".jld2") -v $(vars) -p`)
+    run(`$(Base.julia_cmd()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * "combined" * vars * ".jld2") -v $(vars)`)
 else
     @info "Skipping image pair generation."
 end
