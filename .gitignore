@@ -9,4 +9,5 @@ videos/
 .DS_Store
 *.out
 sh/
+*.sh
 
