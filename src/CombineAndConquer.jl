@@ -20,31 +20,74 @@ function parse_commandline()
             help = "additional simulation variables to include in combined file, as a comma-separated list of variable names (e.g. 'u,v')"
             arg_type = String
             default = nothing
+        "--input_dir", "-i"
+            help = "directory with multiple field and particle file pairs, all of which should be combined into single jld2 files"
+            arg_type = String
+            default = nothing
+        "--output_dir", "-o"
+            help = "directory for output files."
+            arg_type = String
+            default = nothing
+        "--delete_input_files", "-d"
+            help = "deletes all input files (particle files and field files)"
+            action = :store_true
+
     end
 
     return parse_args(s)
 end
 
+
 parsed_args = parse_commandline()
 
 particles_file = parsed_args["particles_file"]
 fields_file = parsed_args["fields_file"]
-vars = parsed_args["sim_vars"]
-out_dir = projectdir() * "/data/binary/"
+sim_vars = parsed_args["sim_vars"]
+input_dir = parsed_args["input_dir"]
+delete_input_files = parsed_args["delete_input_files"]
+output_dir = parsed_args["output_dir"]
+
+if isnothing(output_dir)
+    out_dir = projectdir() * "/data/binary/"
+else
+    out_dir = output_dir
+end
+
+if input_dir !== nothing
+    particle_files = filter(f -> endswith(f, "_particles.jld2"), readdir(input_dir, join = true))
+    jld2_files = filter(f -> endswith(f, ".jld2"), readdir(input_dir, join = true))
+    combined_files = filter(f -> endswith(f, "_combined.jld2"), readdir(input_dir, join = true))
+    field_files = setdiff(jld2_files, particle_files)
+    field_files = setdiff(field_files, combined_files)
+else
+    field_files = [field_file]
+    particle_files = [particle_file]
+end
 
 # --- Combining Data into a Single File ---
 
-fields = load(fields_file)
-particles = load(particles_file)
+for (ff, pf) in zip(field_files, particle_files)
+    fields = load(ff)
+    particles = load(pf)
+    global sim_vars
+    if isnothing(sim_vars)
+        vars = split(ff, '/')[end]
+        vars = vars[1:findlast(isequal('.'),vars)-1]
+    else
+        vars = sim_vars
+    end
 
-function prefix_keys(prefix, data)
-    return Dict(Symbol(prefix * "/" * key) => value for (key, value) in data)
+    function prefix_keys(prefix, data)
+        return Dict(Symbol(prefix * "/" * key) => value for (key, value) in data)
+    end
+
+    combined_file = merge(prefix_keys("fields", fields), prefix_keys("particles", particles))
+
+    jldsave(out_dir * vars * "_combined.jld2"; combined_file...)
+
+    # removing old files
+    if delete_input_files
+        rm(fields_file)
+        rm(particles_file)
+    end
 end
-
-combined_file = merge(prefix_keys("fields", fields), prefix_keys("particles", particles))
-
-jldsave(out_dir * "combined" * vars * ".jld2"; combined_file...)
-
-# removing old files
-rm(fields_file)
-rm(particles_file)
