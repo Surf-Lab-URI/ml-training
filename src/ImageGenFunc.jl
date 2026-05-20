@@ -21,8 +21,16 @@ function parse_commandline()
         "--combined_file", "-f"
             help = "path to combined JLD2 file of fields and particles"
             default = nothing
+        "--input_dir", "-d"
+            help = "path where combined simulation output JLD2 files are stored"
+            default = nothing
         "--vars", "-v"
             help = "variables used in original simulation"
+            arg_type = String
+            default = nothing
+        "--name", "-n"
+            help = "base name for output file"
+            arg_type = String
             default = nothing
         "--save_pngs", "-p"
             help = "save image pairs as PNG files"
@@ -43,7 +51,9 @@ end
 parsed_args = parse_commandline()
 
 file = parsed_args["combined_file"]
+input_dir = parsed_args["input_dir"]
 vars = parsed_args["vars"]
+name = parsed_args["name"]
 save_pngs = parsed_args["save_pngs"]
 k_particles = parsed_args["sample"]
 seed = parsed_args["seed"]

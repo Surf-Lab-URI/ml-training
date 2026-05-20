@@ -18,74 +18,94 @@ using SpecialFunctions
 
 # ---Main Loop to Generate Image Pairs as JLD2 Files---
 
-jldopen(file, "r") do fin
+infiles = filter(f -> endswith(f, "_combined.jld2"), readdir(input_dir, join = true))
+last_c = 0
+formatted_time = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
 
-    frame_keys = get_frame_keys(fin)
+pix_vals = [3, 5]
+last_c = zeros(length(pix_vals))
 
-    # computing image spacing
-    t1 = load_time(fin, frame_keys[1])
-    t2 = load_time(fin, frame_keys[2])
-    Δt = t2 - t1
+for file in infiles
+    global last_c
+    global vars
+    jldopen(file, "r") do fin
 
-    u, v = load_field_frame(fin, frame_keys[1])
+        frame_keys = get_frame_keys(fin)
 
-    speed = sqrt.(u.^2 .+ v.^2)
-    smax = maximum(speed) * Δt
+        # computing image spacing
+        t1 = load_time(fin, frame_keys[1])
+        t2 = load_time(fin, frame_keys[2])
+        Δt = t2 - t1
 
-    pix_vals = [10, 15, 20, 25, 30]
-    
-    for pix in pix_vals
-        dp = max(1, Int(floor(pix / smax)))
+        u, v = load_field_frame(fin, frame_keys[1])
 
-        # output files
-        pix_dir = joinpath(projectdir(), "data", "visual", vars, "pix" * string(pix))
-        mkpath(pix_dir)
+        speed = sqrt.(u.^2 .+ v.^2)
+        smax = maximum(speed) * Δt
 
-        out_file = joinpath(pix_dir, "image_pairs_" * vars * "_pix" * string(pix) * ".jld2")
+        
+        for (i_pix,pix) in zip(collect(1:length(pix_vals)), pix_vals)
+            dp = max(1, Int(floor(pix / smax)))
 
-        jldopen(out_file, "w") do fout
-            n_pairs = length(frame_keys) - dp
+            # output files
+            pix_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix))
+            mkpath(pix_dir)
 
-            for p in 1:n_pairs
-                keyA = frame_keys[p]
-                keyB = frame_keys[p + dp]
+            if isnothing(name) && vars !== nothing
+                out_file = joinpath(pix_dir, "image_pairs_" * vars * "_pix" * string(pix) * ".jld2")
+            elseif name !== nothing
+                vars = formatted_time * "_image_pairs_" * name
+                out_file = joinpath(pix_dir, vars * "_pix" * string(pix) * ".jld2")
+            else
+                error("You must provide either the --name or the --vars argument.")
+            end
 
-                xA, yA = load_particle_frame(fin, keyA)
-                xB, yB = load_particle_frame(fin, keyB)
+            jldopen(out_file, "a+") do fout
+                n_pairs = length(frame_keys) - dp
 
-                xA, yA, xB, yB = subset_particles(xA, yA, xB, yB, k_particles, rng)
+                for p in 1:n_pairs
+                    c = last_c[i_pix] + p
+                    keyA = frame_keys[p]
+                    keyB = frame_keys[p + dp]
 
-                uA, vA = load_field_frame(fin, keyA)
-                uB, vB = load_field_frame(fin, keyB)
+                    xA, yA = load_particle_frame(fin, keyA)
+                    xB, yB = load_particle_frame(fin, keyB)
 
-                tA = load_time(fin, keyA)
-                tB = load_time(fin, keyB)
-                Δt_pair = tB - tA
+                    xA, yA, xB, yB = subset_particles(xA, yA, xB, yB, k_particles, rng)
 
-                imgA, imgB = make_image_pair(
-                    fout,
-                    xA, yA,
-                    xB, yB,
-                    uA, vA,
-                    uB, vB,
-                    p;
-                    width = 512,
-                    height = 512,
-                    xlim = (0.0, 2π),
-                    ylim = (0.0, 2π),
-                    σₚ = 1.2,
-                    Δt_pair = Δt_pair
-                )
+                    uA, vA = load_field_frame(fin, keyA)
+                    uB, vB = load_field_frame(fin, keyB)
 
-                if save_pngs == true
-                    save_image_png(imgA, imgB, p;
-                        out_dir = joinpath(projectdir(), "data", "visual", vars, "pix" * string(pix)),
-                        name = "pair")
-                elseif p == 1 || p == n_pairs
-                    save_image_png(imgA, imgB, p;
-                        out_dir = joinpath(projectdir(), "data", "visual", vars, "pix" * string(pix)),
-                        name = "pair")
+                    tA = load_time(fin, keyA)
+                    tB = load_time(fin, keyB)
+                    Δt_pair = tB - tA
+
+                    imgA, imgB = make_image_pair(
+                        fout,
+                        xA, yA,
+                        xB, yB,
+                        uA, vA,
+                        uB, vB,
+                        c;
+                        width = 512,
+                        height = 512,
+                        xlim = (0.0, 2π),
+                        ylim = (0.0, 2π),
+                        σₚ = 1.2,
+                        Δt_pair = Δt_pair
+                    )
+
+                    if save_pngs == true
+                        save_image_png(imgA, imgB, c;
+                            out_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix)),
+                            name = "pair")
+                    elseif p == 1 || p == n_pairs
+                        save_image_png(imgA, imgB, c;
+                            out_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix)),
+                            name = "pair")
+                    end
                 end
+                last_c[i_pix] = last_c[i_pix] + n_pairs
+                
             end
         end
     end
