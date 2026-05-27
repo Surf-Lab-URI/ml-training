@@ -77,6 +77,7 @@ s₂ = dropdims(interior(sᵢ); dims=3)
 sₘ = maximum(s₂)
 tcfl = 0.5*grid.Δxᶠᵃᵃ/sₘ
 dt = tcfl*10
+st = isnothing(t_end) ? nt*dt : t_end    # moved from args.jl — see BUG-1
 
 simulation = Simulation(model, Δt=tcfl, stop_time=st)
 
@@ -217,15 +218,15 @@ Label(fig[1, 1:2], title, fontsize=24, tellwidth=false)
 
 # --- Combining JLD2 Output Files ---
 
-run(`$(Base.julia_cmd()) $(projectdir() * "/src/CombineAndConquer.jl") -f $(out_dir * "fields" * vars * ".jld2") -p $(out_dir * "particles" * vars * ".jld2") -s $(vars)`)
+run(`$(Base.julia_cmd()) --project=$(projectdir()) $(projectdir() * "/src/CombineAndConquer.jl") -f $(out_dir * "fields" * vars * ".jld2") -p $(out_dir * "particles" * vars * ".jld2") -s $(vars)`)
 @info "Output files combined. "
-@info "New file located at: $(out_dir * "combined" * vars * ".jld2")"
+@info "New file located at: $(out_dir * vars * "_combined.jld2")"
 
 # --- Generating Image Pairs ---
 
 if automate == true
     @info "Generating image pairs..."
-    run(`$(Base.julia_cmd()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * "combined" * vars * ".jld2") -v $(vars)`)
+    run(`$(Base.julia_cmd()) --project=$(projectdir()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * vars * "_combined.jld2") -v $(vars)`)
 else
     @info "Skipping image pair generation."
 end

@@ -10,7 +10,7 @@ function parse_commandline()
         "--jet_amp", "-a"
             help = "amplitude of jet mode in streamfunction"
             arg_type = Float64
-            default = 300
+            default = 300.0
         "--n_max", "-n"
             help = "number of modes in streamfunction"
             arg_type = Int
@@ -52,8 +52,6 @@ mjet = parsed_args["m_jet"]
 automate = parsed_args["automate"]
 
 # Arguments used for defining simulation time and output
-if isnothing(parsed_args["t_end"])
-    st = parsed_args["nt"]*dt
-else
-    st = parsed_args["t_end"]
-end
+# (st is computed in 2DTurbulence.jl after `dt` exists — see BUG-1)
+t_end = parsed_args["t_end"]
+nt    = parsed_args["nt"]

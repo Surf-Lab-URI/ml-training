@@ -60,8 +60,8 @@ if input_dir !== nothing
     field_files = setdiff(jld2_files, particle_files)
     field_files = setdiff(field_files, combined_files)
 else
-    field_files = [field_file]
-    particle_files = [particle_file]
+    field_files = [fields_file]
+    particle_files = [particles_file]
 end
 
 # --- Combining Data into a Single File ---

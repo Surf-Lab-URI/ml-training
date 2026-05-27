@@ -18,11 +18,17 @@ using SpecialFunctions
 
 # ---Main Loop to Generate Image Pairs as JLD2 Files---
 
-infiles = filter(f -> endswith(f, "_combined.jld2"), readdir(input_dir, join = true))
+infiles = if input_dir !== nothing
+    filter(f -> endswith(f, "_combined.jld2"), readdir(input_dir, join = true))
+elseif file !== nothing
+    [file]
+else
+    error("Must provide either --combined_file (-f) or --input_dir (-d)")
+end
 last_c = 0
 formatted_time = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
 
-pix_vals = [3, 5]
+pix_vals = [3, 5, 11]
 last_c = zeros(length(pix_vals))
 
 for file in infiles
