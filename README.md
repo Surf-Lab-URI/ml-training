@@ -14,11 +14,16 @@ pkg> instantiate
 # Automation
 The simulation outputs two .jld2 files, one of field data and the other of particle positions. After the simulation has ran, these two outputs will automatically be passed into CombineAndConcquer.jl which combines the outputs into one .jld2 which is used in ImageGen.jl. 
 
-By default, ImageGen.jl will run following CombineAndConquer.jl; however, by including the -m argument when running 2DTurbulence.jl:
+By default, ImageGen.jl will run following CombineAndConquer.jl; however, by passing the `--no_image_gen` flag when running 2DTurbulence.jl:
 ```bash
-julia 2DTurbulence.jl -t 100 -m false
+julia scripts/2DTurbulence.jl -t 100 --no_image_gen
 ```
-only the simulation and combine and concquer will run. This way ImageGen.jl can be fine tuned to specific pixel displacements. 
+only the simulation and combine and concquer will run. This way ImageGen.jl can be fine tuned to specific pixel displacements.
+
+For reproducible runs, pass `--seed <int>` (default 1234); the same seed and arguments regenerate the same flow and particle seeding:
+```bash
+julia scripts/2DTurbulence.jl --nt 20 --seed 42
+```
 
 Also by default, for storage purposes, pngs of all the image pairs are not produced. The first and last image pairs are shown for debugging purposes. To generate all image pairs, run ImageGen.jl using the -p flag:
 ```bash

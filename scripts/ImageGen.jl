@@ -28,7 +28,7 @@ end
 last_c = 0
 formatted_time = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
 
-pix_vals = [3, 5, 11]
+pix_vals = [10, 20, 30]
 last_c = zeros(length(pix_vals))
 
 for file in infiles
@@ -51,6 +51,17 @@ for file in infiles
         
         for (i_pix,pix) in zip(collect(1:length(pix_vals)), pix_vals)
             dp = max(1, Int(floor(pix / smax)))
+
+            # BUG-13 stopgap: dp is an integer, so achievable displacement is a
+            # multiple of this sim's smax. Flag when the label is off (hot sim
+            # floored to dp=1, or large quantization error) instead of silently
+            # writing mislabeled data. See bugs.md BUG-13/BUG-14.
+            actual = dp * smax
+            rel_err = abs(actual - pix) / pix
+            if rel_err > 0.2
+                @warn "pix=$pix: achievable displacement ≈ $(round(actual, digits=1)) px " *
+                      "(smax=$(round(smax, digits=2)), dp=$dp) — label off by $(round(Int, 100*rel_err))%"
+            end
 
             # output files
             pix_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix))
@@ -94,8 +105,8 @@ for file in infiles
                         c;
                         width = 512,
                         height = 512,
-                        xlim = (0.0, 2π),
-                        ylim = (0.0, 2π),
+                        xlim = (0.0, 512.0),    # must match sim grid extent (BUG-15)
+                        ylim = (0.0, 512.0),    # not (0, 2π) — particles live in [0, 512)
                         σₚ = 1.2,
                         Δt_pair = Δt_pair
                     )

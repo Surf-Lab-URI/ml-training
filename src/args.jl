@@ -31,10 +31,13 @@ function parse_commandline()
             help = "output directory"
             arg_type = String
             default = "out/"
-        "--automate", "-m"
-            help = "automate the entire process, from running the simulation to generating image pairs for training (overrides other arguments except for out_dir)"
-            arg_type = Bool
-            default = true
+        "--no_image_gen"
+            help = "skip image pair generation after combining (run sim + combine only)"
+            action = :store_true
+        "--seed"
+            help = "master random seed for reproducibility (drives all simulation rand() calls)"
+            arg_type = Int
+            default = 1234
     end
 
     return parse_args(s)
@@ -45,11 +48,11 @@ tag!(parsed_args)
 
 # Arguments used for defining random initial conditons 
 
-A = parsed_args["jet_amp"]*(1.5-rand()) #Amplitude of a long wave added at the end to create jets.
+# A (jet amplitude) is computed in 2DTurbulence.jl AFTER Random.seed! so the seed applies to it (BUG-8)
 nmax = parsed_args["n_max"]
 mmax = parsed_args["n_max"]
 mjet = parsed_args["m_jet"]
-automate = parsed_args["automate"]
+automate = !parsed_args["no_image_gen"]   # BUG-3: store-true flag replaces unreliable Bool parsing
 
 # Arguments used for defining simulation time and output
 # (st is computed in 2DTurbulence.jl after `dt` exists — see BUG-1)

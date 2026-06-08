@@ -86,6 +86,10 @@
   `display`ed, `save`d, or `record`ed — pure dead weight on a headless node.
 - **Suggested fix:** Either finish the `record` call properly (define `filename`, add `end`),
   or delete the whole visualization block from `set_theme!` through the commented section.
+- **🟢 FIXED (2026-06-07):** Deleted the entire post-`run!` visualization block (the Makie figure,
+  the particle-reading helpers, and the incomplete commented `Makie.record`). It produced no output
+  on a headless node. Removed as part of the "store only `u, v`" change — it was the sole consumer
+  of the stored `ω`/`s` fields (see also the §4 storage decision in `notes/DATA_GENERATION_DESIGN.md`).
 
 ---
 
@@ -178,6 +182,45 @@
 
 ---
 
+### BUG-15 — Particle render `xlim`/`ylim` mismatch causes pixel-position teleport
+- **File:** `scripts/ImageGen.jl` (the `make_image_pair` call, lines ~97–98)
+- **Severity:** 🔴 Critical — every generated training pair is unusable
+- **Crashes?** No — silently produces nonsense data
+- **Description:** `scripts/2DTurbulence.jl` builds the simulation grid with
+  `extent=(N, M) = (512, 512)` and seeds particles with `rand(Nparticles)*M` and
+  `rand(Nparticles)*N`, so particle positions live in `[0, 512)`. But ImageGen calls
+  `make_image_pair` with `xlim = (0.0, 2π)` and `ylim = (0.0, 2π)`. Inside
+  `render_particles`, the position-to-pixel map is:
+  ```julia
+  x_wrapped = xmin .+ mod.(x .- xmin, Lx)   # Lx = 2π ≈ 6.28
+  u = (x_wrapped .- xmin) ./ Lx .* (width - 1)
+  ```
+  So a particle at physical x=300 maps to `(300 mod 6.28) / 6.28 * 511 ≈ pixel 393`,
+  and the same particle one moment later at x=305 maps to pixel ~266 — **a 5-unit
+  physical drift becomes a 127-pixel jump on screen**. Every particle effectively
+  teleports to a pseudo-random pixel each frame.
+- **Symptom:** Images A and B look unrelated even though the sim's physical motion
+  between them is only a few units. The image data carries no signal about the saved
+  flow field. Any ML model trained on this would learn pure noise.
+- **Verification:** before the fix, the Section 5 patch cross-correlation in
+  `visualize_pair.ipynb` returns large random shifts (5–30 px) with `RMSE >> 1 px`.
+  After the fix, shifts should be ≤ smax and `RMSE < 1 px`.
+- **Suggested fix:** Match `xlim`/`ylim` to the sim grid extent. Quick fix (consistent
+  with the existing `width = 512` / `height = 512` style):
+  ```julia
+  xlim = (0.0, 512.0),
+  ylim = (0.0, 512.0),
+  ```
+  Better long-term fix: read the actual extent from the combined file's grid
+  serialization (`fields/serialized/grid`) so `xlim`/`ylim` stay synchronized with
+  whatever the sim used. The function defaults in `src/ImageGenFunc.jl`'s
+  `render_particles` also have `xlim = (0.0, 2π)` — should be updated for consistency
+  (currently overridden by the call site).
+- **Impact on past work:** every `data/visual/pix*/` dataset generated before this fix
+  is invalid. Re-run ImageGen only (no sim re-run needed) with the corrected `xlim`.
+
+---
+
 ### BUG-14 — No sub-frame interpolation; small-`pix` bins fundamentally limited by `dt`
 - **File:** `scripts/ImageGen.jl` (the pair-construction loop), `src/ImageGenFunc.jl`
 - **Severity:** 🟡 Medium — design limitation, not a code defect
@@ -237,6 +280,12 @@
   - **Increase save resolution** for small-pix runs: lower `dt = tcfl*10` (in
     `scripts/2DTurbulence.jl` line ~79) to e.g. `dt = tcfl*5`, which halves `smax`.
     Tradeoff: more saved frames, bigger files.
+- **Current decision (2026-06-07):** DEFER the real fix (frozen-field warp, BUG-14).
+  Moved `pix_vals` to `[10, 20, 30]` (all ≥ 2·smax with smax≈5, so distinct dp ≥ 2 →
+  no bit-identical bins) and added a runtime `@warn` in `ImageGen.jl` that flags any sim
+  whose `dp*smax` deviates from the requested `pix` by >20% (catches occasional hot sims
+  that floor to dp=1). Labels remain approximate (biased high by floor + per-sim smax
+  drift), accepted as good-enough for the first dataset. Status stays 🔴 until the warp lands.
 
 ---
 
@@ -322,18 +371,19 @@
 |----|-----|------|--------|
 | BUG-1 | `dt` used before defined | `args.jl` | 🟢 FIXED |
 | BUG-2 | Int default on Float64 arg | `args.jl` | 🟢 FIXED |
-| BUG-3 | `Bool` arg parsing unreliable | `args.jl` | 🔴 PENDING |
-| BUG-4 | `progress_message` not registered | `2DTurbulence.jl` | 🔴 PENDING |
-| BUG-5 | Incomplete commented movie block | `2DTurbulence.jl` | 🔴 PENDING |
+| BUG-3 | `Bool` arg parsing unreliable | `args.jl` | 🟢 FIXED |
+| BUG-4 | `progress_message` not registered | `2DTurbulence.jl` | 🟢 FIXED |
+| BUG-5 | Incomplete commented movie block | `2DTurbulence.jl` | 🟢 FIXED |
 | BUG-6 | Jet wavenumber 0/negative | `2DTurbulence.jl` | 🔴 PENDING |
 | BUG-7 | Combine loads all into RAM | `CombineAndConquer.jl` | 🔴 PENDING |
-| BUG-8 | No master `--seed` for reproducibility | `args.jl` / `2DTurbulence.jl` | 🔴 PENDING |
+| BUG-8 | No master `--seed` for reproducibility | `args.jl` / `2DTurbulence.jl` | 🟢 FIXED |
 | BUG-9 | Undefined `field_file`/`particle_file` in single-file mode | `CombineAndConquer.jl` | 🟢 FIXED |
 | BUG-10 | `ImageGen.jl` ignores `-f`, only uses `input_dir` | `ImageGen.jl` | 🟢 FIXED |
 | BUG-11 | Child Julia processes launched without `--project` | `2DTurbulence.jl` | 🟢 FIXED |
 | BUG-12 | Combined-file naming mismatch between writer and consumer | `2DTurbulence.jl` | 🟢 FIXED |
 | BUG-13 | `dp` floor at 1 silently mislabels low-`pix` bins | `ImageGen.jl` | 🔴 PENDING |
 | BUG-14 | No sub-frame interpolation; small-pix bins limited by `dt` | `ImageGen.jl` | 🔴 PENDING |
+| BUG-15 | Particle render xlim/ylim mismatch (2π vs 512) → teleport | `ImageGen.jl` | 🟢 FIXED |
 
 
 

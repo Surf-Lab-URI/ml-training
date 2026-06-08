@@ -6,14 +6,18 @@ include(projectdir()*"/src/args.jl")
 using Oceananigans
 using Statistics
 using Printf
-using CairoMakie
 using StructArrays
 using JLD2
+using Random
 using DataFrames
 using Oceananigans.BoundaryConditions: fill_halo_regions!
 using Dates
 using CUDA
 using SpecialFunctions
+
+# ---Reproducibility: one master seed drives every simulation rand() (BUG-8)---
+Random.seed!(parsed_args["seed"])
+A = parsed_args["jet_amp"]*(1.5-rand())   # moved here from args.jl so the seed applies (BUG-8)
 
 # ---Grid Setup---
 
@@ -90,26 +94,22 @@ function progress_message(sim)
     max_abs_u = maximum(abs, sim.model.velocities.u)
     walltime = prettytime(sim.run_wall_time)
 
-    return @info @sprintf("Iteration: %04d, time: %1.3f, Δt: %.2e, max(|u|) = %.1e, wall time: %s\n",
+    @info @sprintf("Iteration: %04d, time: %1.3f, Δt: %.2e, max(|u|) = %.1e, wall time: %s\n",
                             iteration(sim), time(sim), sim.Δt, max_abs_u, walltime)
 end
 
-# ---Computing Vorticity and Speed---
+simulation.callbacks[:progress] = Callback(progress_message, IterationInterval(10))   # BUG-4: register progress logging
+
+# ---Velocities (the only fields we store; ω, s, div are derived and recomputed on demand)---
 
 u, v, w = model.velocities
-
-ω = ∂x(v) - ∂y(u)
-
-div = ∂x(u) + ∂y(v)
-
-s = sqrt(u^2 + v^2)
 
 # ---Simulation Output Writers---
 out_dir = projectdir() * "/data/binary/"
 mkpath(out_dir)
 vars = "_$(now(UTC))_2DT-A$(A)-nmax$(nmax)-mjet$(mjet)"
 
-simulation.output_writers[:fields] = JLD2Writer(model, (; ω, s, div, u, v), #, parsed_args), addition of parsed_args made sim crash
+simulation.output_writers[:fields] = JLD2Writer(model, (; u, v),   # only velocities; ω/s/div are derived (recompute from u,v when needed)
                                                 schedule = TimeInterval(dt),
                                                 filename = out_dir * "fields" * vars * ".jld2",
                                                 with_halos = false,
@@ -126,94 +126,6 @@ simulation.output_writers[:particles] = JLD2Writer(model, (; particles = model.p
 
 run!(simulation)
 
-# ---Visualizing Results---
-
-# loading vorticity and speed timeseries from JLD2 files
-ω_timeseries = FieldTimeSeries(out_dir * "fields" * vars * ".jld2", "ω")
-s_timeseries = FieldTimeSeries(out_dir * "fields" * vars * ".jld2", "s")
-
-times = ω_timeseries.times
-
-# loading particle output file
-pfile = jldopen(out_dir * "particles" * vars * ".jld2", "r")
-
-ts = pfile["timeseries"]
-pts = ts["particles"]
-
-# pulling particle keys -> flitering -> sorting
-raw_keys = collect(keys(pts))
-pkeys = filter(k -> all(isdigit, k), raw_keys)
-sort!(pkeys, by = k -> parse(Int, k))
-
-function read_xy_at_frame(pts, pkeys, i)
-    k = pkeys[clamp(i, 1, length(pkeys))]     
-    snap = pts[k]                             
-    if hasproperty(snap, :x) && hasproperty(snap, :y)
-        return getproperty(snap, :x), getproperty(snap, :y)
-    end
-
-    if hasproperty(snap, :particles)
-        p = getproperty(snap, :particles)
-        if hasproperty(p, :x) && hasproperty(p, :y)
-            return getproperty(p, :x), getproperty(p, :y)
-        end
-    end
-    
-end
-
-n = Observable(1)
-
-# animating results with Makie
-set_theme!(Theme(fontsize = 20))
-
-fig = Figure(size = (800, 500))
-
-axis_kwargs = (xlabel = "x",
-               ylabel = "y",
-               limits = ((0, N), (0, M)),
-               aspect = AxisAspect(1))
-
-ax_ω = Axis(fig[2, 1]; title = "Vorticity", axis_kwargs...)
-ax_s = Axis(fig[2, 3]; title = "Speed", axis_kwargs...)
-
-xlims!(ax_ω, minimum(xnodes(grid, Center())), maximum(xnodes(grid, Center())))
-ylims!(ax_ω, minimum(ynodes(grid, Center())), maximum(ynodes(grid, Center())))
-
-# plotting vorticity and speed
-ω = @lift ω_timeseries[$n]
-s = @lift s_timeseries[$n]
-
-hmω = heatmap!(ax_ω, ω; colormap = :balance, colorrange = (-2, 2))
-
-px = Observable(Float64[])
-py = Observable(Float64[])
-
-scatter!(ax_ω, px, py;
-    markersize = 1,
-    strokewidth = 0.1,
-    color = :green,
-    strokecolor = :green)
-
-hms = heatmap!(ax_s, s; colormap = :speed, colorrange = (0, 5))
-
-Colorbar(fig[2, 2], hmω, label = "ω")
-Colorbar(fig[2, 4], hms, label = "s")
-
-title = @lift "t = " * string(round(times[$n], digits=2))
-Label(fig[1, 1:2], title, fontsize=24, tellwidth=false)
-
-# ---Recording Movie---
-
-# frames = 1:5:length(times)
-
-# @info "Making animation of vorticity and speed..."
-
-# Makie.record(fig, filename * ".mp4", frames, framerate=24) do i
-#     n[] = i
-#     x, y = read_xy_at_frame(pts, pkeys, i)
-#     px[] = x
-#     py[] = y
-
 @info "Simulation complete. Now combining output files..."
 
 # --- Combining JLD2 Output Files ---
@@ -226,7 +138,7 @@ run(`$(Base.julia_cmd()) --project=$(projectdir()) $(projectdir() * "/src/Combin
 
 if automate == true
     @info "Generating image pairs..."
-    run(`$(Base.julia_cmd()) --project=$(projectdir()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * vars * "_combined.jld2") -v $(vars)`)
+    run(`$(Base.julia_cmd()) --project=$(projectdir()) $(projectdir() * "/scripts/ImageGen.jl") -f $(out_dir * vars * "_combined.jld2") -v $(vars) -s $(parsed_args["seed"])`)
 else
     @info "Skipping image pair generation."
 end
