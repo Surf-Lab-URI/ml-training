@@ -1,0 +1,79 @@
+% Mini 3-slide presentation for the 2D-turbulence PIV pipeline verification.
+% Compile on Overleaf with pdfLaTeX.
+%
+% TO USE ON OVERLEAF:
+%   1. Create a new Beamer project.
+%   2. Replace main.tex with this file.
+%   3. Upload two images alongside main.tex:
+%        pair_000001_a.png   (from data/visual/pix5/)
+%        pair_000001_b.png   (from data/visual/pix5/)
+
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\setbeamertemplate{navigation symbols}{}
+
+\title{2D Turbulence PIV Pipeline}
+\subtitle{Local verification \& bug fixes}
+\author{Arup Mazumder}
+\institute{Surf Lab, University of Rhode Island}
+\date{May 2026}
+
+\begin{document}
+
+% ---------- Slide 1: pipeline overview ----------
+\begin{frame}{Pipeline overview}
+\textbf{Goal.} Generate synthetic Particle Image Velocimetry (PIV) image pairs with known velocity fields, for training an ML model on turbulent flow.
+
+\vspace{1em}
+\textbf{Three stages:}
+\begin{itemize}\setlength\itemsep{0.35em}
+  \item \texttt{2DTurbulence.jl} --- Oceananigans 2D Navier--Stokes simulation on a $512{\times}512$ periodic grid with 16{,}384 Lagrangian tracer particles.
+  \item \texttt{CombineAndConquer.jl} --- merges field and particle JLD2 outputs into one file.
+  \item \texttt{ImageGen.jl} --- renders Gaussian-blob particle images at frames $A$ and $B$, saves the ground-truth velocity field.
+\end{itemize}
+
+\vspace{0.8em}
+\textbf{Status.} End-to-end pipeline working locally on Mac Studio (CPU mode). Heavy GPU runs planned on Unity.
+\end{frame}
+
+% ---------- Slide 2: two frames + the verification claim ----------
+\begin{frame}{Two consecutive frames (after fixes)}
+\centering
+\begin{columns}[T]
+  \column{0.45\linewidth}
+  \centering
+  \includegraphics[width=\linewidth]{pair_000001_a.png}\\[0.3em]
+  \textbf{Frame A}
+
+  \column{0.45\linewidth}
+  \centering
+  \includegraphics[width=\linewidth]{pair_000001_b.png}\\[0.3em]
+  \textbf{Frame B \quad ($\sim$5 px later)}
+\end{columns}
+
+\vspace{1em}
+\small Same 5{,}000 particles, drifting smoothly under the saved velocity field.\\
+Self-consistency check (FFT cross-correlation against the saved flow):\quad \textbf{RMSE $<$ 1 px} across 9 patches.
+\end{frame}
+
+% ---------- Slide 3: what was done ----------
+\begin{frame}{What I did}
+\textbf{Stood up the pipeline locally} (Mac Studio, CPU mode) and built a 6-section verification notebook (\texttt{visualize\_pair.ipynb}) with images, $u/v$ heatmaps, speed+quiver, histograms, FFT self-consistency, and cross-bin comparison.
+
+\vspace{0.5em}
+\textbf{Fixed 7 of 15 bugs identified} (tracked in \texttt{bugs.md}):
+\begin{itemize}\setlength\itemsep{0.15em}
+  \item \texttt{BUG-1}: \texttt{dt} referenced before defined (crashed the default path).
+  \item \texttt{BUG-9}--\texttt{12}: broken child-process chain (filenames, args, \texttt{--project}).
+  \item \textcolor{red!70!black}{\textbf{\texttt{BUG-15}}} \textbf{(critical):} renderer used \texttt{xlim=(0,\,2$\pi$)} but particles live in \texttt{[0,\,512)} --- a 5-unit physical drift became a $\sim$127-pixel teleport. \emph{Every training pair was garbage before this fix.}
+\end{itemize}
+
+\vspace{0.4em}
+\textbf{Next:} address remaining bugs (master seed, dp-floor mislabel, sub-frame interpolation), then run full-scale on Unity GPU.
+\end{frame}
+
+\end{document}
