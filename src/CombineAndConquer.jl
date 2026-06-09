@@ -48,7 +48,10 @@ delete_input_files = parsed_args["delete_input_files"]
 output_dir = parsed_args["output_dir"]
 
 if isnothing(output_dir)
-    out_dir = projectdir() * "/data/binary/"
+    # Honor the configurable output root (PIV_OUT_DIR) so HPC array tasks write
+    # the combined file into their own scratch — matching 2DTurbulence.jl/ImageGen.jl.
+    data_root = get(ENV, "PIV_OUT_DIR", projectdir())
+    out_dir = joinpath(data_root, "data", "binary") * "/"
 else
     out_dir = output_dir
 end

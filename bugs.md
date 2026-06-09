@@ -286,6 +286,20 @@
   whose `dp*smax` deviates from the requested `pix` by >20% (catches occasional hot sims
   that floor to dp=1). Labels remain approximate (biased high by floor + per-sim smax
   drift), accepted as good-enough for the first dataset. Status stays 🔴 until the warp lands.
+- **Confirmed in the wild (2026-06-09, 20-sim nt=40 run):** the assumption in the
+  2026-06-07 note ("smax≈5 with smax<5 → clean dp=2,4,6") is FALSE in practice. By
+  construction `dt = 5/U_max` ⇒ `smax ≈ 5.0` *exactly*, sitting on a knife-edge. Across the
+  20 sims smax landed mostly just **above** 5.0 (5.00–5.03), so `floor(10/5.00x)=1`,
+  `floor(20/..)=3`, `floor(30/..)=5` → actual displacements **{5, 15, 25}**, not {10,20,30}.
+  13/20 sims tripped the @warn on pix10 & pix20; pix30 is off by ~17% (just under the 20%
+  warn threshold, so silent). Worse, the ~7 sims with smax just *below* 5.0 floored cleanly to
+  {10,20,30}, so **each `pixN/` folder is an inconsistent mix** of two displacement values.
+  KEY CLARIFICATION: only the *bin name* is wrong — the stored velocity-field labels
+  (`velocity × Δt_pair`, `Δt_pair = dp·dt`) exactly match each pair's real particle motion, so
+  (image-pair → displacement-field) training data is correct & self-consistent. **User decision
+  (2026-06-09): ACCEPT AS-IS** for the 20-sim dataset — treat the velocity fields as the only
+  labels, ignore the folder names. Real fix (frozen-field warp / off-knife-edge bins) still
+  deferred. Status stays 🔴.
 
 ---
 

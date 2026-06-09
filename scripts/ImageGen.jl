@@ -25,7 +25,6 @@ elseif file !== nothing
 else
     error("Must provide either --combined_file (-f) or --input_dir (-d)")
 end
-last_c = 0
 formatted_time = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
 
 pix_vals = [10, 20, 30]
@@ -34,6 +33,13 @@ last_c = zeros(length(pix_vals))
 for file in infiles
     global last_c
     global vars
+
+    # Directory mode (-d): derive `vars` per-file from the combined filename so
+    # outputs don't collide. (Single-file mode keeps the -v vars passed in.)
+    if input_dir !== nothing
+        vars = replace(basename(file), "_combined.jld2" => "")
+    end
+
     jldopen(file, "r") do fin
 
         frame_keys = get_frame_keys(fin)
@@ -48,7 +54,7 @@ for file in infiles
         speed = sqrt.(u.^2 .+ v.^2)
         smax = maximum(speed) * Δt
 
-        
+
         for (i_pix,pix) in zip(collect(1:length(pix_vals)), pix_vals)
             dp = max(1, Int(floor(pix / smax)))
 
@@ -64,7 +70,7 @@ for file in infiles
             end
 
             # output files
-            pix_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix))
+            pix_dir = joinpath(data_root, "data", "visual", "pix" * string(pix))
             mkpath(pix_dir)
 
             if isnothing(name) && vars !== nothing
@@ -76,53 +82,53 @@ for file in infiles
                 error("You must provide either the --name or the --vars argument.")
             end
 
+            # ONE-PAIR-PER-SIM (design §2): emit only the single most-developed
+            # pair — B = the last frame (latest = most cascade-developed), A = B−dp.
+            # The old loop wrote every frame-offset pair (~nframes−dp per sim),
+            # which were near-duplicate, correlated samples (~37× redundancy).
+            if length(frame_keys) <= dp
+                @warn "pix=$pix: only $(length(frame_keys)) frames but dp=$dp — cannot form a pair, skipping"
+                continue
+            end
+
+            keyA = frame_keys[end - dp]
+            keyB = frame_keys[end]
+
             jldopen(out_file, "a+") do fout
-                n_pairs = length(frame_keys) - dp
+                c = Int(last_c[i_pix]) + 1
 
-                for p in 1:n_pairs
-                    c = last_c[i_pix] + p
-                    keyA = frame_keys[p]
-                    keyB = frame_keys[p + dp]
+                xA, yA = load_particle_frame(fin, keyA)
+                xB, yB = load_particle_frame(fin, keyB)
 
-                    xA, yA = load_particle_frame(fin, keyA)
-                    xB, yB = load_particle_frame(fin, keyB)
+                xA, yA, xB, yB = subset_particles(xA, yA, xB, yB, k_particles, rng)
 
-                    xA, yA, xB, yB = subset_particles(xA, yA, xB, yB, k_particles, rng)
+                uA, vA = load_field_frame(fin, keyA)
+                uB, vB = load_field_frame(fin, keyB)
 
-                    uA, vA = load_field_frame(fin, keyA)
-                    uB, vB = load_field_frame(fin, keyB)
+                tA = load_time(fin, keyA)
+                tB = load_time(fin, keyB)
+                Δt_pair = tB - tA
 
-                    tA = load_time(fin, keyA)
-                    tB = load_time(fin, keyB)
-                    Δt_pair = tB - tA
+                imgA, imgB = make_image_pair(
+                    fout,
+                    xA, yA,
+                    xB, yB,
+                    uA, vA,
+                    uB, vB,
+                    c;
+                    width = 512,
+                    height = 512,
+                    xlim = (0.0, 512.0),    # must match sim grid extent (BUG-15)
+                    ylim = (0.0, 512.0),    # not (0, 2π) — particles live in [0, 512)
+                    σₚ = 1.2,
+                    Δt_pair = Δt_pair
+                )
 
-                    imgA, imgB = make_image_pair(
-                        fout,
-                        xA, yA,
-                        xB, yB,
-                        uA, vA,
-                        uB, vB,
-                        c;
-                        width = 512,
-                        height = 512,
-                        xlim = (0.0, 512.0),    # must match sim grid extent (BUG-15)
-                        ylim = (0.0, 512.0),    # not (0, 2π) — particles live in [0, 512)
-                        σₚ = 1.2,
-                        Δt_pair = Δt_pair
-                    )
-
-                    if save_pngs == true
-                        save_image_png(imgA, imgB, c;
-                            out_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix)),
-                            name = "pair")
-                    elseif p == 1 || p == n_pairs
-                        save_image_png(imgA, imgB, c;
-                            out_dir = joinpath(projectdir(), "data", "visual", "pix" * string(pix)),
-                            name = "pair")
-                    end
+                if save_pngs == true
+                    save_image_png(imgA, imgB, c; out_dir = pix_dir, name = "pair")
                 end
-                last_c[i_pix] = last_c[i_pix] + n_pairs
-                
+
+                last_c[i_pix] = last_c[i_pix] + 1
             end
         end
     end

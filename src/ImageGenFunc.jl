@@ -58,7 +58,9 @@ save_pngs = parsed_args["save_pngs"]
 k_particles = parsed_args["sample"]
 seed = parsed_args["seed"]
 rng = MersenneTwister(seed)
-out_dir = projectdir() * "/data/visual/"
+# Output root is configurable for HPC array jobs (PIV_OUT_DIR); defaults to the repo.
+data_root = get(ENV, "PIV_OUT_DIR", projectdir())
+out_dir = joinpath(data_root, "data", "visual") * "/"
 
 # ---Opening Combined JLD2 File---
 

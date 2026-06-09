@@ -1,0 +1,88 @@
+% Simple overview deck for the 2D-turbulence PIV data-generation project.
+% Self-contained: compiles on Overleaf with pdfLaTeX, no image uploads needed.
+% (To use on Overleaf: new Beamer project, replace main.tex with this file.)
+
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+
+\title{Synthetic PIV Training Data from 2D Turbulence}
+\subtitle{Status \& plan}
+\author{Arup Mazumder}
+\institute{Surf Lab, University of Rhode Island}
+\date{June 2026}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ---------- Slide 1: goal + pipeline ----------
+\begin{frame}{Goal \& pipeline}
+\textbf{Goal.} Generate synthetic Particle Image Velocimetry (PIV) image pairs with
+\emph{known} velocity fields, to train an ML model on turbulent flow.
+
+\vspace{1em}
+\textbf{Pipeline (pure Julia):}
+\begin{itemize}\setlength\itemsep{0.4em}
+  \item \texttt{2DTurbulence.jl} --- Oceananigans 2D simulation, $512\times512$ periodic
+        grid, Lagrangian tracer particles.
+  \item \texttt{CombineAndConquer.jl} --- merges field + particle outputs.
+  \item \texttt{ImageGen.jl} --- renders particle images at frames $A$, $B$ and saves the
+        ground-truth velocity field as the label.
+\end{itemize}
+\end{frame}
+
+% ---------- Slide 2: what we measured ----------
+\begin{frame}{What we measured about the simulation}
+\begin{itemize}\setlength\itemsep{0.6em}
+  \item \textbf{Displacement floor} $s_{\max}\approx 5$ px --- the smallest motion between
+        two saved frames. Sets which displacement bins are achievable.
+  \item \textbf{Decorrelation time} $\tau \approx 30$ time units --- the flow is essentially
+        \emph{frozen} over the short interval an image pair spans.
+\end{itemize}
+
+\vspace{1em}
+\begin{block}{Key consequence}
+\centering
+\textbf{One simulation $\approx$ one independent flow label.}\\
+Extra frames are near-duplicates --- diversity must come from \emph{many simulations}.
+\end{block}
+\end{frame}
+
+% ---------- Slide 3: design decisions ----------
+\begin{frame}{Design decisions for scaling up}
+\begin{itemize}\setlength\itemsep{0.45em}
+  \item \textbf{Many simulations, one image pair each} --- diversity from varied random
+        seeds, not from many frames per run.
+  \item \textbf{When to sample:} at the eddy-turnover time $t = C/(U\,k_p)$, where $k_p$ is
+        the energy-weighted wavenumber --- samples every run at the same dynamical age.
+  \item \textbf{Storage:} keep only velocity fields $(u,v)$ + metadata; vorticity, speed,
+        etc.\ are recomputed on demand ($\sim$60\% smaller, faster).
+  \item \textbf{Metadata per sample:} seed, all parameters, git commit, spectrum, shear,
+        vorticity --- everything needed to regenerate the exact dataset.
+\end{itemize}
+\end{frame}
+
+% ---------- Slide 4: status + next ----------
+\begin{frame}{Status \& next steps}
+\textbf{Done}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item Pipeline verified end-to-end (Mac Studio, CPU); displacement bins $[10,20,30]$ px.
+  \item Pipeline bugs fixed (reproducible \texttt{-{}-seed}, output trimmed to $u,v$, dead
+        code removed); tracked in \texttt{bugs.md}.
+\end{itemize}
+
+\vspace{0.6em}
+\textbf{Next}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item Generate a $\sim$1000-sample dataset on the Unity cluster (parallel array job).
+  \item Train a baseline ML model.
+  \item Later: vary initial-condition parameters for \emph{regime} diversity (v2).
+\end{itemize}
+\end{frame}
+
+\end{document}

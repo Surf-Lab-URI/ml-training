@@ -88,6 +88,23 @@ augmentation, not label diversity. Therefore:
 This is also what makes §4's "don't store full sims" strategy viable: if a sim only yields one
 useful sample, there is no reason to keep all its frames.
 
+**Implementation note — one pair vs. `nt` (discussed 2026-06-08).** Today `ImageGen.jl` loops
+`p = 1 … (nframes − dp)` and emits a pair starting at *every* frame, so each sim yields ~12
+pairs/bin (the pilot: pix10/20/30 ≈ 14.7/12.7/10.7 pairs each). To get **one pair per sim**, emit
+just the single pair `[A, A+dp]`. That mainly cuts **storage + correlated redundancy** (~12×), and
+is what one-sim-one-flow calls for. It does *not* by itself shrink `nt`:
+
+- Saved frames `= nt + 1`; a pair needs frames `dp` apart, `dp = max(1, floor(pix/smax))`. The
+  binding bin is the largest displacement (pix30, biggest `dp`). So `nt ≥ dp_max`.
+- If we keep pairing **from frame 1** (the raw IC), `nt ≈ 10` covers pix30 even for slow sims.
+- But frame 1 is the *undeveloped* IC — §3 says sample from a **developed** flow at `t = C/(U·k_p)`.
+  Then `nt = (frames to reach t_sample) + dp`, possibly *larger*. So `nt` is governed by the
+  sampling time, not by the one-pair choice.
+- Cleanest endgame (frozen-field warp, deferred BUG-14): one developed frame warped to any
+  displacement → need essentially **one saved field**; `nt` only has to reach the developed state.
+
+**Decision order:** choose the sampling time `C` (§3) → that fixes which frame is `A` → then `nt`.
+
 ---
 
 ## 3. *When* to sample — the eddy-turnover-time criterion (Andy's idea)
@@ -129,6 +146,37 @@ report both in the metadata and pick whichever is more stable in practice.
 **To implement:** compute `E(k)` (2D FFT of velocity → shell-average), then `k_p`, `U = max|speed|`,
 at the IC; set `t_end = C/(U·k_p)`; run; sample.
 
+> **CALIBRATION (2026-06-08/09, `scripts/measure_kp.py` + spectrum analysis).** Two earlier wrong
+> turns, then the correct answer — recorded so the reasoning is traceable:
+>
+> - ❌ *First read:* `k_p` flat to <0.1% over ~5 τ₀ and vorticity kurtosis flat & sub-Gaussian (1.5–2.7)
+>   → I concluded "flow is stationary / jet-dominated / not turbulent → run short, nt≈10." **WRONG —
+>   wrong metrics.** `k_p` is energy-weighted and kurtosis is dominated by the energy-containing
+>   large scales; both are blind to the small-scale cascade.
+> - ✅ *Correct read (energy spectrum `E(k)`, the right diagnostic):* the IC is **spectrally
+>   truncated** — energy only up to k≈16 (the prescribed modes), a sharp cliff to zero beyond, **no
+>   small scales** (an artificial start). Over the run the **2D enstrophy cascade fills the spectrum
+>   out to k≈400** — i.e. **turbulence DOES develop.** Energy stays large-scale (97% at k≤2, normal
+>   for 2D), while *enstrophy* cascades down — which is why the energy-weighted metrics looked flat.
+> - **Run length DOES matter and is the cascade-development time.** Small-scale energy (k>16) grows
+>   ~0 → ~0.0024 over ~21 time units and is only *beginning* to saturate at the end. The nt=15 pilot
+>   (~8 units) sampled the flow **under-developed** (~half the eventual small-scale content).
+> - **Andy's eddy-turnover criterion is vindicated:** sample only after the cascade has developed,
+>   not at t≈0. Correct development metric = small-scale spectral fill-in (saturation of energy in
+>   k>16), NOT `k_p`/kurtosis. A long run (nt=100, ~50 units) is running to find the saturation time
+>   → that sets the sampling time / `nt` for the pilot (expected **nt ≳ 40**, well above 15).
+> - Corollary still holds: `dt = 5/U_max` ⇒ `smax ≈ 5 px` by construction ⇒ `dp = 2,4,6` for 10/20/30.
+
+**How long does a run take *today* (for reference).** The save interval is CFL-derived:
+`dt = 10·tcfl`, `tcfl = 0.5·Δx/U_max`, and `Δx = 1` (512 grid over 512 extent), so
+
+$$\text{dt} = 5/U_{\max}, \qquad \text{simulated time} = nt \cdot \text{dt} = 5\,nt/U_{\max}.$$
+
+For `nt = 15`, `U_max ≈ 9`: **≈ 8 simulated time units, ~150 solver steps, ~43 s wall** on the Mac
+CPU (≈130 s/run including Julia startup; the 100-sim pilot ran ~2.2 min/sim). It **auto-scales with
+speed** (faster flow → smaller `dt`). Crucially this length is set *arbitrarily by `nt`*, not by
+physics — replacing it with the `t = C/(U·k_p)` criterion above is the whole point of §3.
+
 ---
 
 ## 4. Storage: keep the samples, regenerate the rest
@@ -151,6 +199,12 @@ metadata to regenerate the sim bit-for-bit.**
   uint8 images, comfortably toward the low end.
 - **Regeneration cost:** one nt=15 sim ≈ **~50 s single-core** (measured on the Mac smoke test).
   10 000 sims ≈ ~140 core-hours — trivial as a SLURM array job (a few hundred cores → minutes/hours).
+
+> **Measured (100-sim pilot, 2026-06-08):** the *current* pipeline writes **~17 GB / 100 sims**
+> (→ ~170 GB at 1000, ~1.7 TB at 10 000). That is far above the per-sample estimate above because
+> today every bin file keeps **all ~12 correlated pairs per sim** with **Float64** label fields
+> `uA,vA,uB,vB`. Confirms the two levers that bring it back in line: **Float32 labels (~2×)** and
+> **one pair per sim** (vs ~12). Both are still pending.
 
 **Conclusion:** the seed + metadata (§6) make every sim fully reproducible, so the simulation
 output is *derived data*. Keep the labels+images (the expensive-to-relabel part) and the metadata;

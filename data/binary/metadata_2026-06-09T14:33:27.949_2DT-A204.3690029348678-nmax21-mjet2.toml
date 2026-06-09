@@ -1,0 +1,48 @@
+[ic_physics]
+dt_save = 0.5126389460469352
+U_max = 9.753453260927662
+enstrophy = 0.030686855980306967
+energy = 16.185301231489152
+k_p = 0.043542745008011086
+
+[particles]
+Nparticles_pool = 16384
+
+[reproducibility]
+jet_amp_arg = 300.0
+git_dirty = "true"
+grid_N = 512
+advection = "WENO(order=5)"
+stop_time = 20.505557841877405
+viscosity_nu = 1.0e-5
+grid_M = 512
+julia_version = "1.12.6"
+git_sha = "bdbd6e135b6ae5c0154d2d6f93b3d8782be06b53"
+nt = 40
+seed = 14
+m_jet = 2
+n_max = 21
+extent = 512.0
+
+[sampling_final]
+U_max = 10.4379238594328
+enstrophy = 0.03050353006353662
+energy = 16.185363677756442
+t_final = 20.505557841877405
+k_p = 0.04341240237343477
+C_achieved = 8.708549001602217
+
+[files]
+particles = "particles_2026-06-09T14:33:27.949_2DT-A204.3690029348678-nmax21-mjet2.jld2"
+fields = "fields_2026-06-09T14:33:27.949_2DT-A204.3690029348678-nmax21-mjet2.jld2"
+combined = "_2026-06-09T14:33:27.949_2DT-A204.3690029348678-nmax21-mjet2_combined.jld2"
+
+[ic_spec]
+A_jet_amplitude = 204.3690029348678
+jet_l_index = -2.0
+a_mode_max = 0.9999995700947866
+n_modes = 21
+streamfunction_form = "A*cos(l(round(mjet*sin(phij)))*y + k(round(mjet*cos(phij)))*x - phi[1,2]) + sum_{m,n} a[m,n]*cos(k(n-..)*x + l(m-..)*y - phi[m,n])"
+a_mode_mean = 0.500484465002427
+phi_jet = 4.47158510304203
+jet_k_index = -0.0
