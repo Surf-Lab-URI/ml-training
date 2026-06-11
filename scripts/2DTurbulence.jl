@@ -12,7 +12,7 @@ using Random
 using DataFrames
 using Oceananigans.BoundaryConditions: fill_halo_regions!
 using Dates
-using CUDA
+# using CUDA   # CPU-only run: omit to avoid CUDA_Runtime_jll init failures on CPU nodes + faster precompile. Re-enable for GPU.
 using SpecialFunctions
 using TOML   # stdlib — for the per-sample metadata sidecar (§6)
 

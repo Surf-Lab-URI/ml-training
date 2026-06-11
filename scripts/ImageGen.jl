@@ -13,7 +13,7 @@ using Printf
 using Random
 using Statistics
 using Dates
-using CUDA
+# using CUDA   # CPU-only run: omit to avoid CUDA_Runtime_jll init failures on CPU nodes + faster precompile. Re-enable for GPU.
 using SpecialFunctions
 
 # ---Main Loop to Generate Image Pairs as JLD2 Files---

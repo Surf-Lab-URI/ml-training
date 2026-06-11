@@ -18,6 +18,7 @@ SEED=$(( BASE_SEED + SLURM_ARRAY_TASK_ID ))
 
 export PATH="$HOME/.juliaup/bin:$PATH"
 export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_CPU_TARGET=generic   # portable precompile cache: build once, load on any compute node (no per-node recompile)
 
 WORK="${SLURM_TMPDIR:-/tmp}/piv_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$WORK"
