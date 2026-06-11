@@ -1,0 +1,190 @@
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+%  Four-week progress report — Synthetic PIV training-data generation
+%  Compiles as-is on Overleaf (pdfLaTeX). Edit the \author / advisor lines.
+% ---------------------------------------------------------------------------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{0.6em}{}
+\setlist{nosep,leftmargin=1.4em}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title{\textbf{Progress Report: Synthetic PIV Training-Data Generation\\
+from 2-D Turbulence Simulations}}
+\author{Arup Mazumder \quad Andrew Goering \quad Colton Super \\ \small Surf Lab, Graduate School of Oceanography, University of Rhode Island \\ \small Advisor: Prof.\ Nicholas Pizzo \quad\textbar\quad \texttt{arup.mazumder@uri.edu}}
+\date{Reporting period: weeks 1--4 \quad (May--June 2026)}
+
+\begin{document}
+\maketitle
+
+\section*{Overview}
+The goal of this project is to generate a large, well-characterized dataset of
+synthetic Particle Image Velocimetry (PIV) image pairs, with ground-truth
+velocity fields as labels, for training a machine-learning flow-estimation model.
+Each sample is produced by a pure-Julia pipeline that (i)~simulates two-dimensional
+turbulence with random spectral modes plus a coherent jet, (ii)~advects tracer
+particles, and (iii)~renders pairs of particle images separated by a prescribed
+displacement. Over the first four weeks I moved from understanding the existing
+code, through fixing a core data-quality bug, to designing and piloting the
+full data-generation campaign and standing it up on the Unity HPC cluster.
+
+% ===========================================================================
+\section{Week 1 --- Understanding the project and code structure}
+\begin{itemize}
+  \item Studied the scientific goal: producing \emph{(image pair $\rightarrow$
+        velocity field)} training examples from simulated turbulent flow, and the
+        role of the synthetic labels in supervised PIV/optical-flow learning.
+  \item Mapped the three-stage pipeline and how the stages chain together:
+        \begin{itemize}
+          \item \code{scripts/2DTurbulence.jl} --- solves the 2-D flow on a
+                $512\times512$ periodic grid (Oceananigans, WENO advection) and
+                advects Lagrangian tracer particles;
+          \item \code{src/CombineAndConquer.jl} --- merges the field and particle
+                time series into a single combined file;
+          \item \code{scripts/ImageGen.jl} --- renders the particle image pairs
+                and stores the velocity-field labels.
+        \end{itemize}
+  \item Reviewed the random initial-condition construction (a streamfunction built
+        from random Fourier modes plus a jet mode of amplitude $A$) and the
+        repository layout (\code{scripts/}, \code{src/}, \code{data/binary},
+        \code{data/visual}), as well as the manually maintained \code{bugs.md}
+        tracker.
+  \item Established a reproducibility baseline by wiring a single master
+        \code{--seed} through every random draw, so a simulation is fully
+        determined by its seed.
+\end{itemize}
+
+% ===========================================================================
+\section{Week 2 --- Fixing the particle-displacement bug}
+The central goal of week~2 was to get correct particle motion into the rendered
+image pairs. I stood up the pipeline end-to-end locally (Mac Studio, CPU) and
+built a verification notebook, then traced and fixed a critical rendering bug.
+
+\begin{itemize}
+  \item \textbf{Critical bug (BUG-15) --- coordinate mismatch / particle teleport.}
+        The simulation grid spans $[0,512)$ and seeds particles there, but the image
+        renderer mapped particle positions using \code{xlim}/\code{ylim}$=(0,2\pi)$.
+        As a result a true $\sim$5-px drift between consecutive frames became a
+        $\sim$127-px \emph{pseudo-random jump} on screen: frames $A$ and $B$ looked
+        unrelated and the images carried no signal about the saved flow field. Every
+        training pair generated before this fix was effectively noise.
+  \item \textbf{Fix.} Matched the render window to the grid extent,
+        \code{xlim=(0,512)}, \code{ylim=(0,512)}, so particles now drift smoothly by
+        the physically correct amount between frames.
+  \item \textbf{Verification.} Built \code{visualize\_pair.ipynb}, which (among other
+        diagnostics) performs an FFT patch cross-correlation comparing the measured
+        particle displacement against the saved velocity field. Before the fix it
+        returned large random shifts (5--30~px, RMSE\,$\gg$\,1~px); after the fix the
+        recovered displacement matches the saved flow to RMSE\,$<$\,1~px across nine
+        patches.
+  \item \textbf{Pipeline repairs and reproducibility.} Fixed the broken three-stage
+        auto-chain so the scripts run end-to-end (undefined variables, an ignored
+        \code{-f} input, child processes launched without \code{--project}, and a
+        combined-file naming mismatch), and threaded a single master \code{--seed}
+        through all random draws so a simulation is fully reproducible. In total,
+        7 of 15 tracked bugs were resolved (see \code{bugs.md}).
+  \item \textbf{Noted limitation (handled later).} The displacement \emph{labeling}
+        is additionally limited by integer-frame quantization and the
+        $s_{\max}\!\approx\!5$~px floor (BUG-13/14); this is examined and addressed
+        in weeks~3--4.
+\end{itemize}
+
+% ===========================================================================
+\section{Weeks 3--4 --- Simulation design, metadata, and pilot campaign}
+
+\subsection{Simulation-design discussion (ML / robustness perspective)}
+\begin{itemize}
+  \item \textbf{One sample per simulation.} Because the decorrelation time is
+        long, extra frames from a single run give near-duplicate, correlated pairs
+        rather than label diversity. We therefore adopt \emph{one image pair per
+        simulation} and obtain all diversity from running \emph{many independent
+        simulations}, each re-randomizing the initial condition.
+  \item \textbf{When to sample --- eddy-turnover criterion.} A collaborating
+        student proposed sampling at a dynamically consistent time
+        $t = C/(U\,k_p)$, where $U$ is the maximum initial speed,
+        $k_p=\sqrt{\text{enstrophy}/\text{energy}}$ is the energy-weighted
+        wavenumber, and $C=\mathcal{O}(1)$ is calibrated. This samples every
+        simulation at the same dynamical ``age'' regardless of its parameters.
+  \item \textbf{Run-length calibration.} Initial diagnostics ($k_p$, vorticity
+        kurtosis) suggested the flow was stationary, but these are dominated by the
+        large energy-containing scales. The correct diagnostic is the energy
+        spectrum $E(k)$: the initial condition is spectrally truncated, and the
+        2-D enstrophy cascade progressively fills the small scales --- i.e.\
+        \emph{turbulence genuinely develops and run length matters}. This
+        vindicated the eddy-turnover sampling idea and set the working run length
+        to $n_t=40$ (a ``developed'' default, pending a saturation study).
+  \item \textbf{Realization vs.\ regime diversity.} For a first controlled dataset
+        we fix the four physical parameters and vary only the seed (many
+        realizations of one regime); broadening to multiple regimes via
+        Latin-Hypercube / Sobol sampling is documented as a future (v2) extension.
+\end{itemize}
+
+\subsection{Metadata formation discussion}
+To make the campaign reproducible and self-describing, we designed and implemented
+a per-sample metadata sidecar (\code{metadata\_*.toml}). Grouped contents:
+\begin{itemize}
+  \item \emph{Reproducibility:} master seed, all command-line arguments, the git
+        commit hash, the Julia version, and the grid / viscosity / advection scheme;
+  \item \emph{Initial-condition spec:} the streamfunction form, jet amplitude and
+        phase, and summary statistics of the random-mode amplitudes;
+  \item \emph{Physical characterization:} $U_{\max}$, energy, enstrophy, and $k_p$
+        at both the initial condition and the sampling time, plus the achieved
+        dimensionless age $C = t\,U_{\max}\,k_p$.
+\end{itemize}
+This closed a critical gap: earlier pilot data stored \emph{no} seed and was only
+indirectly reproducible. The implementation was validated by confirming that a
+given seed reproduces its initial-condition fingerprint exactly.
+
+\subsection{Pilot campaign and careful checking}
+\begin{itemize}
+  \item \textbf{Local pilot.} Ran a batch of independent simulations locally
+        (one sample each), confirming the flows are independent and the pipeline is
+        deterministic per seed.
+  \item \textbf{One-pair-per-sim.} Reworked \code{ImageGen.jl} to emit only the
+        single most-developed pair (last frame and $\text{last}-dp$) instead of
+        every frame offset. Regenerating from the stored simulations --- without
+        re-simulating --- cut the rendered dataset by roughly $37\times$
+        (e.g.\ $\sim$10~GB $\rightarrow$ $\sim$270~MB at the pilot scale) while
+        keeping the velocity-field labels exact.
+  \item \textbf{Storage strategy.} Established the tiered model: keep the small
+        image-pair samples and the metadata (the seed makes any raw simulation
+        regenerable on demand), and discard the large raw simulation output. This
+        keeps the dataset tractable at scale (e.g.\ $\sim$1.4~TB of samples vs.\
+        $\sim$18~TB of raw output at $10^5$ simulations).
+  \item \textbf{Verification of the displacement bug in the wild.} The pilot
+        confirmed the $s_{\max}\!\approx\!5$ ``knife-edge'': realized displacements
+        cluster near $\{5,15,25\}$ rather than the nominal $\{10,20,30\}$, and the
+        bin labels are not internally consistent across simulations. Crucially, the
+        \emph{velocity-field labels remain exact} (they encode the true particle
+        motion), so the data is sound for training; only the folder-level bin names
+        are nominal. This is recorded and accepted for the first dataset.
+  \item \textbf{Scaling to Unity HPC.} Made the output root configurable
+        (\code{PIV\_OUT\_DIR}) across all pipeline stages so parallel array tasks do
+        not collide, and authored a SLURM array job (one task per simulation,
+        seed $=$ base $+$ array index) that collects the durable artifacts and drops
+        the raw output. Established the run environment on Unity (Julia toolchain,
+        package precompilation on a shared filesystem) and validated a single
+        end-to-end simulation on a compute node ($\sim$2~min of physics per sim).
+\end{itemize}
+
+% ===========================================================================
+\section*{Status and next steps}
+\begin{itemize}
+  \item Finalize the Unity run: confirm cross-node cache reuse, then launch the
+        100- and 1000-simulation array jobs.
+  \item Pin the sampling time via an $E(k)$-saturation study to replace the
+        provisional $n_t=40$ with a calibrated value.
+  \item Extend the metadata to the image-generation stage (realized $dp$, $s_{\max}$,
+        particle density) and, longer term, evaluate the frozen-field warp for exact
+        displacement labels and the move to multi-regime (LHS/Sobol) sampling.
+\end{itemize}
+
+\end{document}

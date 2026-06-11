@@ -13,7 +13,7 @@ set -euo pipefail
 PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
 BASE_SEED=0
 NT=40
-DATASET="$PROJ/dataset"
+DATASET="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"   # 11 TB /project space
 SEED=$(( BASE_SEED + SLURM_ARRAY_TASK_ID ))
 
 export PATH="$HOME/.juliaup/bin:$PATH"
@@ -28,14 +28,20 @@ echo "[task ${SLURM_ARRAY_TASK_ID}] seed=${SEED} nt=${NT} start=$(date '+%F %T')
 julia --project="$PROJ" "$PROJ/scripts/2DTurbulence.jl" --nt "$NT" --seed "$SEED"
 
 shopt -s nullglob
+# One pair per sim per bin -> name files PURELY by seed, so a filtered manifest row
+# (keyed by seed) maps directly to its files: dataset/pixB/seed<N>_pixB.jld2
 for bin in pix10 pix20 pix30; do
     src="$WORK/data/visual/$bin"
     [ -d "$src" ] || continue
     mkdir -p "$DATASET/$bin"
-    for f in "$src"/*.jld2; do cp "$f" "$DATASET/$bin/seed${SEED}_$(basename "$f")"; done
+    for f in "$src"/*.jld2; do cp "$f" "$DATASET/$bin/seed${SEED}_${bin}.jld2"; done
 done
 mkdir -p "$DATASET/metadata"
-for m in "$WORK"/data/binary/metadata_*.toml; do cp "$m" "$DATASET/metadata/seed${SEED}_$(basename "$m")"; done
+for m in "$WORK"/data/binary/metadata_*.toml; do cp "$m" "$DATASET/metadata/seed${SEED}.toml"; done
+# Keep the combined raw sim (~90 MB/sim) so we can re-render (new pix bins / pairing) later
+# without re-simulating. Cheap on the 11 TB /project. Drop this block at 100k scale.
+mkdir -p "$DATASET/combined"
+for c in "$WORK"/data/binary/*_combined.jld2; do cp "$c" "$DATASET/combined/seed${SEED}.jld2"; done
 
 rm -rf "$WORK"
 echo "[task ${SLURM_ARRAY_TASK_ID}] seed=${SEED} done=$(date '+%F %T')"

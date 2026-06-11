@@ -13,6 +13,7 @@ using Printf
 using Random
 using Statistics
 using Dates
+using TOML   # to append realized-displacement info to each sim's metadata sidecar
 # using CUDA   # CPU-only run: omit to avoid CUDA_Runtime_jll init failures on CPU nodes + faster precompile. Re-enable for GPU.
 using SpecialFunctions
 
@@ -54,20 +55,45 @@ for file in infiles
         speed = sqrt.(u.^2 .+ v.^2)
         smax = maximum(speed) * Δt
 
+        # ONE PAIR PER SIM, SHARED FIRST FRAME (standard PIV convention): all bins share
+        # the SAME first image A; the second image B is dp frames later (B = A + dp).
+        # Anchor A so the LARGEST displacement bin lands its B on the final (most-developed)
+        # frame: iA = nframes − max(dp). A is common; B moves forward per bin.
+        dps = [max(1, Int(floor(pix / smax))) for pix in pix_vals]
+        dp_max = maximum(dps)
+        iA = length(frame_keys) - dp_max
+        if iA < 1
+            @warn "Only $(length(frame_keys)) frames but max dp=$dp_max — cannot form pairs, skipping $(basename(file))"
+            return
+        end
+        keyA = frame_keys[iA]
+
+        # Draw ONE particle subset (shared indices) so the first image is IDENTICAL across
+        # bins; the same tracked particles are then followed to each bin's B frame.
+        xA_full, yA_full = load_particle_frame(fin, keyA)
+        npool = length(xA_full)
+        k_use = min(k_particles, npool)
+        idx = randperm(rng, npool)[1:k_use]
+        xA, yA = xA_full[idx], yA_full[idx]
+        uA, vA = load_field_frame(fin, keyA)   # label field at A (shared across bins)
+        tA = load_time(fin, keyA)
+
+        # realized-displacement metadata for this sim (for filtering)
+        disp = Dict{String,Any}("smax" => smax, "frameA_index" => iA, "nframes" => length(frame_keys))
 
         for (i_pix,pix) in zip(collect(1:length(pix_vals)), pix_vals)
-            dp = max(1, Int(floor(pix / smax)))
+            dp = dps[i_pix]
 
-            # BUG-13 stopgap: dp is an integer, so achievable displacement is a
-            # multiple of this sim's smax. Flag when the label is off (hot sim
-            # floored to dp=1, or large quantization error) instead of silently
-            # writing mislabeled data. See bugs.md BUG-13/BUG-14.
+            # BUG-13 stopgap: dp is an integer, so achievable displacement is a multiple
+            # of this sim's smax. Flag when the label is off instead of silently mislabeling.
             actual = dp * smax
             rel_err = abs(actual - pix) / pix
             if rel_err > 0.2
                 @warn "pix=$pix: achievable displacement ≈ $(round(actual, digits=1)) px " *
                       "(smax=$(round(smax, digits=2)), dp=$dp) — label off by $(round(Int, 100*rel_err))%"
             end
+            disp["dp_pix$(pix)"]          = dp
+            disp["realized_px_pix$(pix)"] = actual
 
             # output files
             pix_dir = joinpath(data_root, "data", "visual", "pix" * string(pix))
@@ -82,32 +108,14 @@ for file in infiles
                 error("You must provide either the --name or the --vars argument.")
             end
 
-            # ONE-PAIR-PER-SIM (design §2): emit only the single most-developed
-            # pair — B = the last frame (latest = most cascade-developed), A = B−dp.
-            # The old loop wrote every frame-offset pair (~nframes−dp per sim),
-            # which were near-duplicate, correlated samples (~37× redundancy).
-            if length(frame_keys) <= dp
-                @warn "pix=$pix: only $(length(frame_keys)) frames but dp=$dp — cannot form a pair, skipping"
-                continue
-            end
-
-            keyA = frame_keys[end - dp]
-            keyB = frame_keys[end]
+            keyB = frame_keys[iA + dp]              # shared A; B = A + dp
+            xB_full, yB_full = load_particle_frame(fin, keyB)
+            xB, yB = xB_full[idx], yB_full[idx]     # same particles as A, advected to B
+            uB, vB = load_field_frame(fin, keyB)
+            Δt_pair = load_time(fin, keyB) - tA
 
             jldopen(out_file, "a+") do fout
                 c = Int(last_c[i_pix]) + 1
-
-                xA, yA = load_particle_frame(fin, keyA)
-                xB, yB = load_particle_frame(fin, keyB)
-
-                xA, yA, xB, yB = subset_particles(xA, yA, xB, yB, k_particles, rng)
-
-                uA, vA = load_field_frame(fin, keyA)
-                uB, vB = load_field_frame(fin, keyB)
-
-                tA = load_time(fin, keyA)
-                tB = load_time(fin, keyB)
-                Δt_pair = tB - tA
 
                 imgA, imgB = make_image_pair(
                     fout,
@@ -130,6 +138,19 @@ for file in infiles
 
                 last_c[i_pix] = last_c[i_pix] + 1
             end
+        end
+
+        # Append the realized-displacement info to this sim's metadata sidecar so the
+        # manifest can be filtered by ACTUAL displacement (not just the nominal bin name).
+        metafile = joinpath(data_root, "data", "binary", "metadata" * vars * ".toml")
+        try
+            meta = isfile(metafile) ? TOML.parsefile(metafile) : Dict{String,Any}()
+            meta["displacement"] = disp
+            open(metafile, "w") do io
+                TOML.print(io, meta)
+            end
+        catch err
+            @warn "Could not update metadata with displacement info" exception=err
         end
     end
 end

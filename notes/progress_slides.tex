@@ -1,0 +1,125 @@
+\documentclass[aspectratio=169]{beamer}
+
+% ---------------------------------------------------------------------------
+%  Four-week progress presentation (compact) — Synthetic PIV data generation
+%  Compiles as-is on Overleaf (pdfLaTeX). Edit the \author / institute lines.
+% ---------------------------------------------------------------------------
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\beamertemplatenavigationsymbolsempty
+\setbeamerfont{block body}{size=\footnotesize}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title[PIV Data Generation]{Synthetic PIV Training-Data Generation from 2-D Turbulence}
+\subtitle{Four-Week Progress Report}
+\author[Mazumder, Goering, Super]{Arup Mazumder \and Andrew Goering \and Colton Super}
+\institute[URI]{Surf Lab, Graduate School of Oceanography, University of Rhode Island\\ \footnotesize Advisor: Prof.\ Nicholas Pizzo}
+\date{May--June 2026}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Goal, Pipeline \& Week 1}
+  \textbf{Goal:} generate synthetic PIV image pairs with ground-truth velocity
+  fields as \emph{labels}, to train an ML flow-estimation model.
+
+  \medskip
+  \textbf{Pure-Julia, three-stage pipeline:}
+  \code{2DTurbulence.jl} (simulate 2-D turbulence, $512^2$, + advect particles)
+  $\rightarrow$ \code{CombineAndConquer.jl} (merge) $\rightarrow$
+  \code{ImageGen.jl} (render pairs + store labels).
+
+  \medskip
+  \textbf{Week 1 --- understanding the project:}
+  \begin{itemize}
+    \item Random initial condition: streamfunction from Fourier modes $+$ a jet of
+          amplitude $A$; mapped the auto-chained pipeline and repo layout.
+    \item Established reproducibility --- a single master \code{--seed} fully
+          determines a simulation.
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Week 2 --- Fixing the Particle-Displacement Bug}
+  \textbf{Critical bug (BUG-15):} every training pair was unusable noise.
+  \begin{itemize}
+    \item Particles live on $[0,512)$, but the renderer mapped them with
+          \code{xlim}/\code{ylim}$=(0,2\pi)$ $\Rightarrow$ a true $\sim$5-px drift
+          became a $\sim$127-px \emph{pseudo-random teleport}.
+    \item \textbf{Fix:} match the render window to the grid extent, $(0,512)$.
+    \item \textbf{Verified} (\code{visualize\_pair.ipynb}, FFT patch
+          cross-correlation): RMSE $\gg 1$~px before $\rightarrow$ $<1$~px after.
+  \end{itemize}
+  \footnotesize Also repaired the broken three-stage auto-pipeline (undefined vars,
+  ignored \code{-f}, missing \code{--project}, filename mismatch) and added a master
+  \code{--seed}: \textbf{7 of 15 tracked bugs fixed}.
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Weeks 3--4 --- Simulation Design \& Metadata}
+  \textbf{Design (ML / robustness):}
+  \begin{itemize}
+    \item \textbf{One sample per simulation} --- long decorrelation makes extra
+          frames near-duplicates; diversity comes from \emph{many} independent runs.
+    \item \textbf{When to sample:} eddy-turnover time
+          $t = C/(U\,k_p),\ k_p=\sqrt{\text{enstrophy}/\text{energy}}$ --- same
+          dynamical ``age'' every run.
+    \item \textbf{Run length matters:} the $E(k)$ enstrophy cascade fills the small
+          scales ($k_p$/kurtosis were misleading); working value $n_t=40$.
+  \end{itemize}
+  \medskip
+  \textbf{Metadata sidecar} (\code{metadata\_*.toml}, per sample): seed, all args, git
+  commit, Julia version, grid/$\nu$; IC spec; and $U_{\max}$, energy, enstrophy, $k_p$
+  at IC and sampling time. \emph{Earlier pilots stored no seed} --- now any run is
+  regenerable; validated against the IC fingerprint.
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Weeks 3--4 --- Pilot, Storage \& Unity Scaling}
+  \begin{itemize}
+    \item \textbf{One-pair-per-sim:} emit only the most-developed pair --- regenerating
+          from stored sims (no re-sim) cut the dataset $\sim\!37\times$ ($\sim$10\,GB
+          $\rightarrow$ $\sim$270\,MB); labels stay exact.
+    \item \textbf{Storage:} keep samples $+$ metadata, drop raw output (regenerable) ---
+          $\sim$1.4\,TB vs.\ $\sim$18\,TB at $10^5$ sims.
+    \item \textbf{Displacement bug in the wild:} $s_{\max}\!\approx\!5$ floor $\Rightarrow$
+          realized displacements $\{5,15,25\}$, not nominal $\{10,20,30\}$; bin
+          \emph{names} are nominal but velocity-field \emph{labels} stay exact.
+    \item \textbf{Unity HPC:} configurable output (\code{PIV\_OUT\_DIR}) + SLURM array
+          (1 task = 1 sim); validated on a compute node ($\sim$2~min/sim).
+  \end{itemize}
+  \vspace{-0.3em}
+  \begin{center}\footnotesize
+  \begin{tabular}{lcc}
+    \toprule
+    Concurrency & Waves (1000 sims) & Wall-clock ($\sim$5 min/task)\\
+    \midrule
+    \code{\%50} & 20 & $\sim$1.5\,h \quad\textbar\quad \code{\%100}: $\sim$50\,min \quad\textbar\quad \code{\%200}: $\sim$25\,min\\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Status \& Next Steps}
+  \begin{itemize}
+    \item Finalize the Unity run: confirm cross-node cache reuse, then launch the
+          100- and 1000-simulation array jobs.
+    \item Pin the sampling time via an $E(k)$-saturation study (replace provisional
+          $n_t=40$).
+    \item Extend metadata to image-generation (realized $dp$, $s_{\max}$, particle
+          density); longer term: exact-label frozen-field warp and multi-regime
+          (LHS / Sobol) sampling.
+  \end{itemize}
+  \vfill
+  \begin{center}\large Thank you --- questions welcome.\end{center}
+\end{frame}
+
+\end{document}
