@@ -10,6 +10,6 @@ videos/
 *.out
 sh/
 *.sh
-# campaign entry point must stay tracked (overrides *.sh):
-!unity/submit_run.sh
+# campaign entry-point scripts must stay tracked (overrides *.sh):
+!unity/*.sh
 dsO
