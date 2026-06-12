@@ -19,7 +19,9 @@ MAXQ=${MAXQ:-900}       # submit next chunk only when queued+running < this.
                         # Must satisfy MAXQ + CHUNK < 2000 (QOS cap) → 900+1000=1900 ✓
 
 PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
-ROOT="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
+# Output root: defaults to /project, but override with PIV_ROOT to use fast /scratch
+# (recommended at 100k scale — /project is the slow capacity tier and chokes on many small files).
+ROOT="${PIV_ROOT:-/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset}"
 PIX="10,20,30"
 
 STAMP=$(date +%Y-%m-%d_%H-%M-%S)
