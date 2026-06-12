@@ -14,6 +14,7 @@ NT=${2:-40}
 PART=${3:-cpu-preempt}
 BASE=${4:-0}
 CHUNK=${CHUNK:-1000}    # sims per chunk (< QOS submit limit 2000)
+KEEP_COMBINED=${KEEP_COMBINED:-1}   # 1=keep raw combined files; set 0 at 100k scale (~9 TB)
 MAXQ=${MAXQ:-900}       # submit next chunk only when queued+running < this.
                         # Must satisfy MAXQ + CHUNK < 2000 (QOS cap) → 900+1000=1900 ✓
 
@@ -67,7 +68,7 @@ while [ "$a" -le "$N" ]; do
     jid=$(sbatch --parsable \
           --partition="$PART" --time=00:40:00 --array=1-${sz}%1000 \
           --output="$RUN_DIR/logs/piv_%A_%a.out" --error="$RUN_DIR/logs/piv_%A_%a.err" \
-          --export=ALL,RUN_DIR="$RUN_DIR",NT="$NT",BASE_SEED="$off",PROJ="$PROJ" \
+          --export=ALL,RUN_DIR="$RUN_DIR",NT="$NT",BASE_SEED="$off",PROJ="$PROJ",KEEP_COMBINED="$KEEP_COMBINED" \
           "$PROJ/unity/run_array.sbatch" 2>>"$RUN_DIR/logs/submit.err")
     if [ -n "${jid:-}" ]; then
         echo "[chunked] $(date '+%T') seeds $((off+1))-$((off+sz)) -> job $jid"

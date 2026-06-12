@@ -37,8 +37,12 @@ for bin in pix10 pix20 pix30; do
 done
 mkdir -p "$DATASET/metadata"
 for m in "$WORK"/data/binary/metadata_*.toml; do cp "$m" "$DATASET/metadata/seed${SEED}.toml"; done
-mkdir -p "$DATASET/combined"
-for c in "$WORK"/data/binary/*_combined.jld2; do cp "$c" "$DATASET/combined/seed${SEED}.jld2"; done
+# Keep the combined raw sim for later re-rendering, UNLESS KEEP_COMBINED=0
+# (set 0 at ~100k scale: combined would be ~9 TB; samples alone are ~1.4 TB).
+if [ "${KEEP_COMBINED:-1}" = "1" ]; then
+    mkdir -p "$DATASET/combined"
+    for c in "$WORK"/data/binary/*_combined.jld2; do cp "$c" "$DATASET/combined/seed${SEED}.jld2"; done
+fi
 
 rm -rf "$WORK"
 echo "[task ${SLURM_ARRAY_TASK_ID}] seed=${SEED} done=$(date '+%F %T')"
