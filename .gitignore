@@ -10,4 +10,6 @@ videos/
 *.out
 sh/
 *.sh
+# campaign entry point must stay tracked (overrides *.sh):
+!unity/submit_run.sh
 dsO
