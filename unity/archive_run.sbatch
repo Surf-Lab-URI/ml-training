@@ -13,7 +13,10 @@
 #
 #SBATCH --job-name=piv_archive
 #SBATCH --partition=cpu
-#SBATCH --time=08:00:00
+# 24h: a ~1.3 TB / 600k-file campaign takes ~7h to tar PLUS a multi-hour re-read to
+# verify member count. The original 8h wall killed the verify step mid-check (job
+# 60919923, 2026-06-15) — the tar was fine, only the self-check got guillotined.
+#SBATCH --time=24:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=2
 #SBATCH --output=archive_%j.out
