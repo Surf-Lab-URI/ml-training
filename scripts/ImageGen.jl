@@ -28,6 +28,12 @@ else
 end
 formatted_time = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
 
+# Lab-matched image appearance (domain-randomized per pair) when PIV_LAB_APPEARANCE=1; otherwise
+# the original clean synthetic look. Ranges validated vs ExpLCL_1_03 (bg~50, contrast~4x, particle
+# ~2px, noise σ~5) — see piv-models/results/datagen_spec.md. Use with -k ~12000 for lab-like density.
+lab_appearance = get(ENV, "PIV_LAB_APPEARANCE", "0") == "1"
+lab_appearance && @info "PIV_LAB_APPEARANCE=1 → lab-matched images (gray bg, low contrast, small particles, noise)"
+
 pix_vals = [10, 20, 30]
 last_c = zeros(length(pix_vals))
 
@@ -117,6 +123,15 @@ for file in infiles
             jldopen(out_file, "a+") do fout
                 c = Int(last_c[i_pix]) + 1
 
+                # Appearance: clean synthetic (default) or lab-matched + domain-randomized per pair.
+                bg, pk, sp, nσ = if lab_appearance
+                    (0.52f0 + 0.14f0*rand(rng),    # gray background  → ~44–60/255
+                     1.55f0 + 0.60f0*rand(rng),    # contrast         → ~3.5–5×
+                     0.55   + 0.13*rand(rng),      # particle σ       → diameter ~1.8–2.7 px
+                     0.060f0 + 0.035f0*rand(rng))  # sensor noise σ   → ~4–7/255
+                else
+                    (0.0f0, 1.0f0, 1.2, 0.0f0)     # original clean synthetic
+                end
                 imgA, imgB = make_image_pair(
                     fout,
                     xA, yA,
@@ -128,8 +143,9 @@ for file in infiles
                     height = 512,
                     xlim = (0.0, 512.0),    # must match sim grid extent (BUG-15)
                     ylim = (0.0, 512.0),    # not (0, 2π) — particles live in [0, 512)
-                    σₚ = 1.2,
-                    Δt_pair = Δt_pair
+                    σₚ = sp,
+                    Δt_pair = Δt_pair,
+                    background = bg, peak = pk, noise_σ = nσ, rng = rng
                 )
 
                 if save_pngs == true

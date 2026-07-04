@@ -261,6 +261,13 @@ function subset_particles(xA, yA, xB, yB, k, rng)
     return xA[idx], yA[idx], xB[idx], yB[idx]
 end
 
+# ---Sensor/background noise (lab appearance)---
+
+function add_noise!(img, σ, rng)
+    σ > 0 && (img .+= Float32(σ) .* randn(rng, Float32, size(img)))
+    return img
+end
+
 # ---Making Imgage Pairs---
 
 function make_image_pair(jldfile, xA, yA, xB, yB, uA, vA, uB, vB, pair_index;
@@ -269,10 +276,16 @@ function make_image_pair(jldfile, xA, yA, xB, yB, uA, vA, uB, vB, pair_index;
         xlim = (0.0, 2π),
         ylim = (0.0, 2π),
         σₚ = 1.2,
-        Δt_pair = 1.0)
+        Δt_pair = 1.0,
+        background = 0.0,     # lab appearance: gray background level (0.0 = original black)
+        peak = 1.0,           # particle peak intensity above bg (controls contrast)
+        noise_σ = 0.0,        # sensor/background noise std (0.0 = original clean)
+        rng = Random.GLOBAL_RNG)
 
-    imgA = render_particles(xA, yA; width, height, xlim, ylim, σₚ)
-    imgB = render_particles(xB, yB; width, height, xlim, ylim, σₚ)
+    imgA = render_particles(xA, yA; width, height, xlim, ylim, σₚ, background, peak)
+    imgB = render_particles(xB, yB; width, height, xlim, ylim, σₚ, background, peak)
+    add_noise!(imgA, noise_σ, rng)     # independent noise realization per frame
+    add_noise!(imgB, noise_σ, rng)
 
     save_image(jldfile, imgA, imgB, pair_index)
 
