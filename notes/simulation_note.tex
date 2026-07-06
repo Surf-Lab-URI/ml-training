@@ -1,0 +1,162 @@
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+%  Simulation note --- 2-D turbulence PIV data generation
+%  Minimal-dependency version (compiles on base TinyTeX / Overleaf, pdfLaTeX).
+%  Images live in notes/sim_samples/.
+% ---------------------------------------------------------------------------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\graphicspath{{sim_samples/}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title{\textbf{Simulation Note: 2-D Turbulence Runs for\\ Synthetic PIV Data Generation}}
+\author{Arup Mazumder \\ \small Surf Lab, Graduate School of Oceanography, University of Rhode Island \\ \small Advisor: Prof.\ Nicholas Pizzo \quad\textbar\quad \texttt{arup.mazumder@uri.edu}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% ===========================================================================
+\section{The simulation}
+Each sample in the dataset comes from an independent direct simulation of
+\textbf{two-dimensional turbulence}, run with the pure-Julia \code{Oceananigans}
+solver. The configuration is identical across all runs; only the random seed
+changes from one simulation to the next.
+
+\begin{itemize}
+  \item \textbf{Grid \& domain:} $512\times512$ cells, doubly periodic, unit grid
+        spacing ($\Delta x = 1$).
+  \item \textbf{Numerics:} WENO advection (order 5); explicit scalar diffusivity
+        $\nu = 1\times10^{-5}$; adaptive time step controlled by a CFL wizard
+        (CFL $=0.7$).
+  \item \textbf{Initial condition:} a band of random spectral modes (up to
+        wavenumber $\sim$21) superposed with a coherent jet, giving a different,
+        statistically independent flow for every seed.
+  \item \textbf{Tracers:} passive particles are advected by the resolved velocity
+        field and later rendered as the synthetic PIV particle images; the
+        underlying velocity field is retained as the ground-truth label.
+\end{itemize}
+
+% ===========================================================================
+\section{How long does each run last?}
+The save interval and total length are tied to each simulation's own peak speed
+$U_{\max}$, so the flow is sampled consistently regardless of how energetic it is.
+With $\Delta x = 1$ the code sets
+
+\begin{equation}
+  \Delta t_{\text{save}} = \frac{5}{U_{\max}},
+  \qquad
+  t_{\text{stop}} = n_t\,\Delta t_{\text{save}},
+  \qquad n_t = 40 .
+\end{equation}
+
+This yields the following per-run summary:
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Saved frames           & $n_t+1 = 41$ snapshots (one every $\Delta t_{\text{save}}$) \\
+  Simulation time        & $t_{\text{stop}} = 40\,\Delta t_{\text{save}} = 200/U_{\max}$ (code units) \\
+  Physical span (invariant) & fastest tracers travel $\sim$200 cells ($\approx$40\% of the box) \\
+  Per-frame displacement & $s_{\max} = U_{\max}\,\Delta t_{\text{save}} \approx 5$ px \emph{by construction} \\
+  Wall-clock             & $\sim$6 minutes per run (one Unity CPU node) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Because $\Delta t_{\text{save}}=5/U_{\max}$ is set from each run's initial speed,
+the \emph{absolute} simulation time varies between runs, but the \emph{displacement}
+budget is fixed: every frame interval advances the fastest particles by about five
+pixels.
+
+% ===========================================================================
+\section{Building the image pairs --- where is the ``first frame''?}
+Each sample provides three image pairs at nominal particle displacements of
+\textbf{10, 20, and 30 px}. All three pairs share the \emph{same} first image~$A$;
+the second image~$B$ is taken $\mathrm{d}p$ frames later, where
+$\mathrm{d}p = \lfloor \text{pix}/s_{\max}\rfloor$.
+
+\textbf{Importantly, frame $A$ is not at the start of the run --- it sits near the
+end.} It is anchored so that the largest-displacement bin (30~px) places its second
+image~$B$ exactly on the final, most-developed frame:
+\begin{equation}
+  i_A \;=\; n_{\text{frames}} - \max(\mathrm{d}p)\;=\; 41 - 6 \;=\; \text{frame }35 .
+\end{equation}
+
+\begin{center}
+\begin{tabular}{cccc}
+  \toprule
+  Bin & First image $A$ & $\mathrm{d}p$ & Second image $B$ \\
+  \midrule
+  10 px & frame 35 & 2 & frame 37 \\
+  20 px & frame 35 & 4 & frame 39 \\
+  30 px & frame 35 & 6 & frame 41 \;(final frame) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Frame 35 corresponds to a simulation time $t_A \approx 170/U_{\max}$, i.e.\ roughly
+\textbf{85\% of the way through the run}.
+
+\paragraph{Why near the end?} The initial condition is spectrally truncated
+(artificial, with no small-scale structure). Over the run the 2-D enstrophy cascade
+fills in the small scales, so the later frames hold the most physically developed
+turbulence --- the best signal for training. Anchoring $A$ near the end of the run
+captures that developed state.
+
+\paragraph{Caveat (recorded per sample).} Because $s_{\max}$ sits right at $5.0$,
+the floor in $\mathrm{d}p=\lfloor\text{pix}/s_{\max}\rfloor$ can shift $i_A$ by
+$\pm1$ frame between runs. The exact anchor frame and frame count are therefore
+stored per sample (\code{frameA\_index}, \code{nframes}) in the metadata, alongside
+the realized displacement for each bin.
+
+% ===========================================================================
+\section{The dataset}
+The production campaign generated \textbf{100{,}000 independent simulations}
+(one image-pair sample per simulation, per displacement bin) on the Unity HPC
+cluster:
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Samples per bin (10/20/30 px) & 100{,}000 each (300{,}000 pairs total) \\
+  Per-sample contents           & images $A,B$ + ground-truth velocity fields $(u,v)$ at $A$ and $B$ \\
+  Metadata                      & one sidecar per sim $\rightarrow$ \code{manifest.parquet} ($10^5 \times 48$ columns) \\
+  Total size                    & $\sim$1.3\,TB, archived to permanent \code{/project} storage \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The manifest records, for every sample, the seed, all physics parameters, code
+git SHA, initial/final flow diagnostics, and the displacement bookkeeping --- so
+any sample can be filtered, traced back, and exactly reproduced.
+
+% ===========================================================================
+\section{Sample image pairs}
+Figure~\ref{fig:samples} shows representative previews from the pipeline. Each
+preview is a six-panel view: \emph{top row} --- image~$A$, image~$B$, and an A/B
+overlay (red\,$=A$, green\,$=B$); \emph{bottom row} --- a zoomed overlay, the
+displacement magnitude, and the ground-truth displacement field. The slight
+red/green offset in the overlays is the prescribed particle displacement that the
+network learns to invert.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\textwidth]{sample_pix10.png}\\[0.3em]
+  {\small (a) 10\,px displacement bin}\\[1.0em]
+  \includegraphics[width=0.9\textwidth]{sample_pix20_a.png}\\[0.3em]
+  {\small (b) 20\,px displacement bin}
+  \caption{Representative synthetic PIV samples (different independent
+  simulations). Particle images $A$ and $B$ are the network inputs; the
+  displacement / velocity field is the ground-truth label.}
+  \label{fig:samples}
+\end{figure}
+
+\end{document}
