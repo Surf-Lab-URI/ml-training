@@ -1,0 +1,68 @@
+#!/bin/bash
+# Submit the v2 re-render: existing combined sims -> image pairs binned by MEDIAN displacement.
+# No re-simulation. Writes a NEW run_v2_<stamp>/ alongside the source run.
+#
+# Usage: ./unity/submit_v2.sh <SRC_RUN> [N_SEEDS] [CHUNK] [PARTITION] [KPART]
+#   ./unity/submit_v2.sh /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_2026-06-12_04-50-52 200
+#
+# START SMALL. Run a pilot of a few hundred seeds, check the achieved medians in the logs and the
+# metadata_v2/ sidecars, and only then scale up. The whole premise — that widening the training
+# range moves the model's 22 px ceiling — is untested.
+set -euo pipefail
+
+SRC_RUN=${1:?"give the SOURCE run dir (must contain combined/)"}
+N=${2:-200}
+CHUNK=${3:-50}
+PART=${4:-uri-cpu}
+KPART=${5:-12000}
+
+PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
+ROOT="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
+STAMP=$(date +%Y-%m-%d_%H-%M-%S)
+OUT_RUN="$ROOT/run_v2_$STAMP"
+NTASKS=$(( (N + CHUNK - 1) / CHUNK ))
+BINS="med03 med06 med09 med12 med16 med20 med26 med30"
+
+[ -d "$SRC_RUN/combined" ] || { echo "ERROR: $SRC_RUN/combined not found — need the kept combined sims"; exit 1; }
+
+mkdir -p "$OUT_RUN/logs" "$OUT_RUN/code/datagen_v2" "$OUT_RUN/metadata_v2"
+for b in $BINS; do mkdir -p "$OUT_RUN/$b"; done
+
+# Metadata from the source describes the FLOW, which is unchanged — only the pairing differs.
+cp -r "$SRC_RUN/metadata" "$OUT_RUN/metadata" 2>/dev/null || true
+
+# Snapshot the exact generator used, so a run can be reproduced later.
+cp "$PROJ/datagen_v2/ImageGenV2.jl"        "$OUT_RUN/code/datagen_v2/" 2>/dev/null || true
+cp "$PROJ/datagen_v2/FracFrame.jl"         "$OUT_RUN/code/datagen_v2/" 2>/dev/null || true
+cp "$PROJ/datagen_v2/DATA_REQUIREMENTS.md" "$OUT_RUN/code/datagen_v2/" 2>/dev/null || true
+cp "$PROJ/src/ImageGenFunc.jl"             "$OUT_RUN/code/" 2>/dev/null || true
+
+{
+  echo "run          : run_v2_$STAMP  (v2 re-render — median-binned, no re-simulation)"
+  echo "source_run   : $SRC_RUN"
+  echo "date_time    : $(date '+%F %T %Z')"
+  echo "n_seeds      : $N   (chunk=$CHUNK -> $NTASKS array tasks)"
+  echo "k_particles  : $KPART"
+  echo "bins         : $BINS   (MEDIAN displacement in px; max ~ 1.67x the median)"
+  echo "generator    : datagen_v2/ImageGenV2.jl  (fractional B frame — BUG-13/14 fixed)"
+  echo "appearance   : PIV_LAB_APPEARANCE=1"
+  echo "git_commit   : $(cd "$PROJ" && git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "note         : out-of-tolerance samples are SKIPPED, not mislabelled — check the logs"
+  echo "               for 'skipping' lines and metadata_v2/*.toml for achieved distributions."
+} > "$OUT_RUN/RUN_INFO.txt"
+
+JID=$(sbatch --parsable \
+      --partition="$PART" --time=02:00:00 --array=1-${NTASKS}%100 \
+      --output="$OUT_RUN/logs/v2_%A_%a.out" --error="$OUT_RUN/logs/v2_%A_%a.err" \
+      --export=ALL,SRC_RUN="$SRC_RUN",OUT_RUN="$OUT_RUN",PROJ="$PROJ",CHUNK="$CHUNK",KPART="$KPART",BASE_SEED=0 \
+      "$PROJ/unity/rerender_v2.sbatch")
+
+echo "[submit] v2 array $JID  ->  $OUT_RUN"
+echo
+echo "Run folder : $OUT_RUN"
+echo "Watch      : squeue --me    |    tail -f $OUT_RUN/logs/v2_${JID}_1.out"
+echo
+echo "When the pilot finishes, check:"
+echo "  grep -h 'skipping'  $OUT_RUN/logs/*.out | head        # targets that could not be reached"
+echo "  grep -h 'OFF by'    $OUT_RUN/logs/*.out | head        # and by how much"
+echo "  for b in $BINS; do echo -n \"\$b \"; ls $OUT_RUN/\$b | wc -l; done"
