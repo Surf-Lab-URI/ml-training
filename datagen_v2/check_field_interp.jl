@@ -21,7 +21,29 @@ using JLD2, Statistics, Printf
 include(joinpath(@__DIR__, "FracFrame.jl"))
 using .FracFrame
 
-isempty(ARGS) && error("give one or more *_combined.jld2 paths")
+if isempty(ARGS)
+    println("usage: julia --project=. datagen_v2/check_field_interp.jl <combined.jld2> [more...]")
+    println()
+    println("find the runs that actually have combined/ with:")
+    println("  ls -d /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_*/combined")
+    exit(1)
+end
+
+let missing = filter(p -> !isfile(p), ARGS)
+    if !isempty(missing)
+        println("ERROR: file(s) not found:")
+        for p in missing
+            println("  ", p)
+        end
+        println()
+        if any(p -> startswith(p, "/combined"), missing)
+            println("The path starts with /combined — the RUN variable was empty.")
+            println("Set it to a real directory first (do not paste <stamp> literally):")
+            println("  ls -d /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_*/combined")
+        end
+        exit(1)
+    end
+end
 
 @printf("%-26s %7s %10s %10s %10s %12s\n",
         "file", "frames", "|u| rms", "lin err", "cubic err", "label err px")
