@@ -23,7 +23,29 @@ OUT_RUN="$ROOT/run_v2_$STAMP"
 NTASKS=$(( (N + CHUNK - 1) / CHUNK ))
 BINS="med03 med06 med09 med12 med16 med20 med26 med30"
 
-[ -d "$SRC_RUN/combined" ] || { echo "ERROR: $SRC_RUN/combined not found — need the kept combined sims"; exit 1; }
+# A bare number here means $RUN was unset and the arguments shifted along one.
+case "$SRC_RUN" in
+    /*) ;;
+    *)  echo "ERROR: first argument is '$SRC_RUN', which is not an absolute path."
+        echo
+        echo "This usually means \$RUN was empty (it does not survive a new login), so the"
+        echo "seed count was read as the run directory. Set it first:"
+        echo "  RUN=/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_<the real name>"
+        echo "  ls \$RUN/combined | head -3"
+        echo "  ./unity/submit_v2.sh \$RUN 200 50"
+        echo
+        echo "Runs that actually have combined/:"
+        ls -d /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_*/combined 2>/dev/null \
+            | sed 's|/combined$||; s|^|  |' || echo "  (none found)"
+        exit 1 ;;
+esac
+
+[ -d "$SRC_RUN/combined" ] || {
+    echo "ERROR: $SRC_RUN/combined not found — need the kept combined sims"
+    echo "Runs that do have combined/:"
+    ls -d /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_*/combined 2>/dev/null \
+        | sed 's|/combined$||; s|^|  |' || echo "  (none found)"
+    exit 1; }
 
 mkdir -p "$OUT_RUN/logs" "$OUT_RUN/code/datagen_v2" "$OUT_RUN/metadata_v2"
 for b in $BINS; do mkdir -p "$OUT_RUN/$b"; done
