@@ -56,9 +56,12 @@ esac
 # scanning an empty range and exiting with "no combined files in range".
 SEEDS=$(ls "$SRC_RUN/combined" 2>/dev/null | sed -n 's/^seed\([0-9][0-9]*\)\.jld2$/\1/p' | sort -n)
 [ -n "$SEEDS" ] || { echo "ERROR: no seed<N>.jld2 files in $SRC_RUN/combined"; exit 1; }
-MINSEED=$(echo "$SEEDS" | head -1)
-MAXSEED=$(echo "$SEEDS" | tail -1)
-NAVAIL=$(echo "$SEEDS" | wc -l | tr -d ' ')
+# Parameter expansion, not `echo | head -1`: with ~10k seeds head closes the pipe after one
+# line, echo takes SIGPIPE, and `set -o pipefail` + `set -e` kill the script silently (exit 141).
+# That failure only appears at scale, which is exactly when it matters.
+MINSEED=${SEEDS%%$'\n'*}
+MAXSEED=${SEEDS##*$'\n'}
+NAVAIL=$(printf '%s\n' "$SEEDS" | grep -c .)
 
 # BASE_SEED is an offset: the sbatch computes FIRST = BASE_SEED + (task-1)*CHUNK + 1.
 BASE_SEED=${BASE_SEED:-$(( MINSEED - 1 ))}
