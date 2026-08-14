@@ -9,8 +9,8 @@ request below `smax` is unachievable yet still written under the requested label
 BUG-14 is this fix.
 
 Here a virtual frame is synthesised at any *fractional* index `s`, so the exact Δt that produces a
-requested displacement can be used. Particle positions are interpolated with Catmull-Rom (cubic)
-and the velocity fields linearly in time.
+requested displacement can be used. Both particle positions and the velocity fields are
+interpolated with Catmull-Rom (cubic); see `field_at` for why linear was not good enough.
 
 Two things this module gets right that a naive implementation does not:
 
@@ -111,19 +111,30 @@ function particles_at(file, keys, s; idx = nothing, order = :cubic, L = DOMAIN_L
 end
 
 """
-    field_at(file, keys, s)
+    field_at(file, keys, s; order)
 
-Velocity field at fractional frame index `s`, linear in time. The fields are smooth on the
-save interval, so linear is adequate; `selftest_fracframe.jl` measures the error.
+Velocity field at fractional frame index `s`. `order = :cubic` (default) uses Catmull-Rom over four
+frames and falls back to linear at the ends.
+
+Measured on real runs by `check_field_interp.jl` (5 sims, 41 frames each): leave-one-out error is
+0.036 linear vs 0.024 cubic. Because leave-one-out spans a doubled interval, the error actually
+incurred here is ~4x smaller for linear (h^2) and ~16x smaller for cubic (h^4), which puts the worst
+-case contribution to the uB/vB labels at roughly 0.03 px linear against 0.008 px cubic. Cubic costs
+two extra field reads and removes the concern, so it is the default.
 """
-function field_at(file, keys, s)
+function field_at(file, keys, s; order = :cubic)
     n = length(keys)
     s = clamp(s, 1.0, float(n))
     i = clamp(floor(Int, s), 1, n - 1)
     t = s - i
     u1, v1 = _field(file, keys[i])
     u2, v2 = _field(file, keys[i + 1])
-    return (1 - t) .* u1 .+ t .* u2, (1 - t) .* v1 .+ t .* v2
+    if order === :linear || i == 1 || i + 2 > n
+        return (1 - t) .* u1 .+ t .* u2, (1 - t) .* v1 .+ t .* v2
+    end
+    u0, v0 = _field(file, keys[i - 1])
+    u3, v3 = _field(file, keys[i + 2])
+    return _cr.(u0, u1, u2, u3, t), _cr.(v0, v1, v2, v3, t)
 end
 
 function time_at(file, keys, s)
