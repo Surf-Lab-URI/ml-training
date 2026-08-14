@@ -47,6 +47,38 @@ esac
         | sed 's|/combined$||; s|^|  |' || echo "  (none found)"
     exit 1; }
 
+# Seed numbering does not start at 1 in every campaign (run_2026-06-12 starts at seed10000).
+# Detect what is actually there instead of assuming, so the array covers real files rather than
+# scanning an empty range and exiting with "no combined files in range".
+SEEDS=$(ls "$SRC_RUN/combined" 2>/dev/null | sed -n 's/^seed\([0-9][0-9]*\)\.jld2$/\1/p' | sort -n)
+[ -n "$SEEDS" ] || { echo "ERROR: no seed<N>.jld2 files in $SRC_RUN/combined"; exit 1; }
+MINSEED=$(echo "$SEEDS" | head -1)
+MAXSEED=$(echo "$SEEDS" | tail -1)
+NAVAIL=$(echo "$SEEDS" | wc -l | tr -d ' ')
+
+# BASE_SEED is an offset: the sbatch computes FIRST = BASE_SEED + (task-1)*CHUNK + 1.
+BASE_SEED=${BASE_SEED:-$(( MINSEED - 1 ))}
+
+if [ "$N" -gt "$NAVAIL" ]; then
+    echo "note: asked for $N seeds, only $NAVAIL exist — using $NAVAIL"
+    N=$NAVAIL
+fi
+NTASKS=$(( (N + CHUNK - 1) / CHUNK ))
+LASTWANTED=$(( BASE_SEED + N ))
+
+echo "source     : $SRC_RUN"
+echo "available  : $NAVAIL seeds (seed$MINSEED .. seed$MAXSEED)"
+echo "generating : seed$(( BASE_SEED + 1 )) .. seed$LASTWANTED   ($N seeds, chunk $CHUNK -> $NTASKS tasks)"
+echo "bins       : $BINS"
+echo "output     : $OUT_RUN"
+echo "estimate   : $(( N * 8 )) samples, ~$(( N * 8 * 45 / 10 )) MB"
+echo
+if [ "$LASTWANTED" -gt "$MAXSEED" ]; then
+    echo "note: the requested range runs past seed$MAXSEED; the trailing tasks will find"
+    echo "      nothing and exit cleanly. Harmless, but you will get fewer than $(( N * 8 )) samples."
+    echo
+fi
+
 mkdir -p "$OUT_RUN/logs" "$OUT_RUN/code/datagen_v2" "$OUT_RUN/metadata_v2"
 for b in $BINS; do mkdir -p "$OUT_RUN/$b"; done
 
@@ -64,6 +96,7 @@ cp "$PROJ/src/ImageGenFunc.jl"             "$OUT_RUN/code/" 2>/dev/null || true
   echo "source_run   : $SRC_RUN"
   echo "date_time    : $(date '+%F %T %Z')"
   echo "n_seeds      : $N   (chunk=$CHUNK -> $NTASKS array tasks)"
+  echo "seed_range   : seed$(( BASE_SEED + 1 )) .. seed$LASTWANTED   (BASE_SEED=$BASE_SEED, $NAVAIL available)"
   echo "k_particles  : $KPART"
   echo "bins         : $BINS   (MEDIAN displacement in px; max ~ 1.67x the median)"
   echo "generator    : datagen_v2/ImageGenV2.jl  (fractional B frame — BUG-13/14 fixed)"
@@ -76,7 +109,7 @@ cp "$PROJ/src/ImageGenFunc.jl"             "$OUT_RUN/code/" 2>/dev/null || true
 JID=$(sbatch --parsable \
       --partition="$PART" --time=02:00:00 --array=1-${NTASKS}%100 \
       --output="$OUT_RUN/logs/v2_%A_%a.out" --error="$OUT_RUN/logs/v2_%A_%a.err" \
-      --export=ALL,SRC_RUN="$SRC_RUN",OUT_RUN="$OUT_RUN",PROJ="$PROJ",CHUNK="$CHUNK",KPART="$KPART",BASE_SEED=0 \
+      --export=ALL,SRC_RUN="$SRC_RUN",OUT_RUN="$OUT_RUN",PROJ="$PROJ",CHUNK="$CHUNK",KPART="$KPART",BASE_SEED="$BASE_SEED" \
       "$PROJ/unity/rerender_v2.sbatch")
 
 echo "[submit] v2 array $JID  ->  $OUT_RUN"
