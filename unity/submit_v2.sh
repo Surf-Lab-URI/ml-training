@@ -2,7 +2,7 @@
 # Submit the v2 re-render: existing combined sims -> image pairs binned by MEDIAN displacement.
 # No re-simulation. Writes a NEW run_v2_<stamp>/ alongside the source run.
 #
-# Usage: ./unity/submit_v2.sh <SRC_RUN> [N_SEEDS] [CHUNK] [PARTITION] [KPART]
+# Usage: ./unity/submit_v2.sh <SRC_RUN> [N_SEEDS] [CHUNK] [PARTITION] [KPART] [TIME]
 #   ./unity/submit_v2.sh /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_2026-06-12_04-50-52 200
 #
 # START SMALL. Run a pilot of a few hundred seeds, check the achieved medians in the logs and the
@@ -15,6 +15,10 @@ N=${2:-200}
 CHUNK=${3:-50}
 PART=${4:-uri-cpu}
 KPART=${5:-12000}
+# Wall clock per array task. A 200-seed chunk is a lot of work: each seed reads 41
+# frames, solves 8 displacement targets and renders 16 images. Measure one task
+# before scaling, and raise this if tasks are being killed at the limit.
+TIME=${6:-04:00:00}
 
 PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
 ROOT="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
@@ -71,7 +75,8 @@ echo "available  : $NAVAIL seeds (seed$MINSEED .. seed$MAXSEED)"
 echo "generating : seed$(( BASE_SEED + 1 )) .. seed$LASTWANTED   ($N seeds, chunk $CHUNK -> $NTASKS tasks)"
 echo "bins       : $BINS"
 echo "output     : $OUT_RUN"
-echo "estimate   : $(( N * 8 )) samples, ~$(( N * 8 * 45 / 10 )) MB"
+echo "estimate   : $(( N * 8 )) samples, ~$(( N * 8 * 45 / 10240 )) GB"
+echo "wall clock : $TIME per task (override with the 6th argument)"
 echo
 if [ "$LASTWANTED" -gt "$MAXSEED" ]; then
     echo "note: the requested range runs past seed$MAXSEED; the trailing tasks will find"
@@ -98,6 +103,7 @@ cp "$PROJ/src/ImageGenFunc.jl"             "$OUT_RUN/code/" 2>/dev/null || true
   echo "n_seeds      : $N   (chunk=$CHUNK -> $NTASKS array tasks)"
   echo "seed_range   : seed$(( BASE_SEED + 1 )) .. seed$LASTWANTED   (BASE_SEED=$BASE_SEED, $NAVAIL available)"
   echo "k_particles  : $KPART"
+  echo "time_limit   : $TIME per array task"
   echo "bins         : $BINS   (MEDIAN displacement in px; max ~ 1.67x the median)"
   echo "generator    : datagen_v2/ImageGenV2.jl  (fractional B frame — BUG-13/14 fixed)"
   echo "appearance   : PIV_LAB_APPEARANCE=1"
@@ -107,7 +113,7 @@ cp "$PROJ/src/ImageGenFunc.jl"             "$OUT_RUN/code/" 2>/dev/null || true
 } > "$OUT_RUN/RUN_INFO.txt"
 
 JID=$(sbatch --parsable \
-      --partition="$PART" --time=02:00:00 --array=1-${NTASKS}%100 \
+      --partition="$PART" --time="$TIME" --array=1-${NTASKS}%100 \
       --output="$OUT_RUN/logs/v2_%A_%a.out" --error="$OUT_RUN/logs/v2_%A_%a.err" \
       --export=ALL,SRC_RUN="$SRC_RUN",OUT_RUN="$OUT_RUN",PROJ="$PROJ",CHUNK="$CHUNK",KPART="$KPART",BASE_SEED="$BASE_SEED" \
       "$PROJ/unity/rerender_v2.sbatch")
