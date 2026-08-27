@@ -16,6 +16,21 @@ KPART=${KPART:-12000}
 BASE_SEED=${BASE_SEED:-0}
 
 export PATH="$HOME/.juliaup/bin:$PATH"
+# $HOME is on NFS and is occasionally not resolvable the instant a task starts, which makes
+# `julia` vanish from PATH and the task die with exit 127. That hit 34 of 153 tasks in the
+# 2026-08-26 re-render -- intermittently, on nodes where other tasks of the same array
+# succeeded. Resolve the binary explicitly, with retries, and fail loudly rather than at
+# line 41 with a bare "command not found".
+JULIA=""
+for _try in 1 2 3 4 5; do
+    JULIA=$(command -v julia 2>/dev/null || true)
+    [ -n "$JULIA" ] && [ -x "$JULIA" ] && break
+    echo "[warn] julia not on PATH (attempt $_try) -- waiting for \$HOME to settle"
+    sleep 10
+    export PATH="$HOME/.juliaup/bin:$PATH"
+done
+[ -n "$JULIA" ] || { echo "[fatal] julia unresolvable after 5 attempts on $(hostname)"; exit 1; }
+echo "[info] julia = $JULIA"
 export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
 export JULIA_CPU_TARGET=generic
 export PIV_LAB_APPEARANCE=1                     # <-- the lab-matched appearance
@@ -38,7 +53,7 @@ done
 echo "[task ${SLURM_ARRAY_TASK_ID}] seeds ${FIRST}..${LAST}  (${n} combined found)  start=$(date '+%F %T')"
 if [ "$n" -eq 0 ]; then echo "no combined files in range — nothing to do"; rm -rf "$WORK"; exit 0; fi
 
-julia --project="$PROJ" "$PROJ/scripts/ImageGen.jl" -d "$IN" -k "$KPART"
+"$JULIA" --project="$PROJ" "$PROJ/scripts/ImageGen.jl" -d "$IN" -k "$KPART"
 
 # Rename outputs to seed<N> and copy into the run folder (strip the image_pairs_ prefix).
 shopt -s nullglob
