@@ -270,6 +270,31 @@ also write PNGs — fine for a handful of pairs, far too slow for a campaign.
 
 ---
 
+## The three datasets used for training
+
+All three trace back to the June 2026 simulations; only the rendering changed. **No new physics has
+been generated since 2026-06-12.**
+
+**1. `pix20` — one displacement bin, clean synthetic (June 2026).** 10 000 simulations, rendered at
+a single nominal displacement (`pix20`, median 8.4 px) with noiseless black-background images; the
+first trained model used this bin alone. Its dataset lived on `/scratch` and has since been purged —
+only the checkpoint survives.
+
+**2. `pix10 / pix20 / pix30` — three bins, lab-matched appearance (July 2026).** A re-render of
+campaign `run_2026-06-12_04-50-52` into three displacement bins, and where the lab appearance was
+introduced (`PIV_LAB_APPEARANCE=1`, commit `5c45e70`): clean synthetic images transferred poorly to
+the tank, so the renderer gained a domain-randomised gray background, reduced contrast, ~2 px
+particles and sensor noise matched to `ExpLCL_1_03`. Three bins rather than one because the
+`pix10`-only model capped near 15 px against the lab's 24–33 px near-surface peaks. This produced
+the production model.
+
+**3. `med03 … med30` — eight median-targeted bins, lab appearance (August 2026).** The same June
+campaign re-rendered once more, keeping the lab appearance but binning by **median** displacement
+via fractional frame gaps (the BUG-13/14 fix), because the v1 bins were quantised in ~5 px steps and
+named by their maximum rather than their typical value. It was built to push past the 22 px
+displacement ceiling measured on the production model, and it does reach far wider displacements —
+though the model trained on the full range underfit, so this dataset has not yet superseded #2.
+
 ## What comes out
 
 ```
