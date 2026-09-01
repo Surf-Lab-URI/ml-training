@@ -45,12 +45,11 @@ using .FracFrame
 
 using JLD2, Printf, Random, Statistics, Dates, TOML
 
-const MEDIANS = let e = get(ENV, "PIV_V2_MEDIANS", "")
-    isempty(e) ? [3.0, 6.0, 9.0, 12.0, 16.0, 20.0, 26.0, 30.0] :
-                 parse.(Float64, split(e, ","))
-end
-const TOL   = parse(Float64, get(ENV, "PIV_V2_TOL", "0.05"))
-const LOOSE = get(ENV, "PIV_V2_LOOSE", "0") == "1"
+# Bin targets and solver tolerance, from params.toml [bins.v2]. PIV_V2_MEDIANS / PIV_V2_TOL /
+# PIV_V2_LOOSE still override, so existing Slurm scripts keep working — see src/Params.jl.
+const MEDIANS = Params.get_vector("bins.v2.medians", [3.0, 6.0, 9.0, 12.0, 16.0, 20.0, 26.0, 30.0])
+const TOL   = Params.get("bins.v2.tolerance", 0.05)
+const LOOSE = Params.get("bins.v2.write_out_of_tolerance", false)
 const BIN_NAME = m -> @sprintf("med%02d", round(Int, m))
 
 infiles = if input_dir !== nothing
@@ -62,8 +61,8 @@ else
 end
 isempty(infiles) && error("no *_combined.jld2 files found")
 
-lab_appearance = get(ENV, "PIV_LAB_APPEARANCE", "0") == "1"
-lab_appearance && @info "PIV_LAB_APPEARANCE=1 → lab-matched images"
+# `lab_appearance` and `appearance_draw` come from src/ImageGenFunc.jl, which resolved them from
+# params.toml [imaging.appearance] — one definition, shared with the v1 generator.
 @info "v2 median targets (px): $(join(Int.(round.(MEDIANS)), ", "))  tol=$(TOL)  loose=$(LOOSE)"
 
 formatted_time = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
@@ -150,15 +149,10 @@ for infile in infiles
 
             jldopen(out_file, "a+") do fout
                 c = get(counters, bin, 0) + 1
-                bg, pk, sp, nσ = if lab_appearance
-                    (0.52f0 + 0.14f0 * rand(rng), 1.55f0 + 0.60f0 * rand(rng),
-                     0.55 + 0.13 * rand(rng),     0.060f0 + 0.035f0 * rand(rng))
-                else
-                    (0.0f0, 1.0f0, 1.2, 0.0f0)
-                end
+                bg, pk, sp, nσ = appearance_draw(rng)   # params.toml [imaging.appearance]
                 make_image_pair(fout, xA, yA, xB, yB, uA, vA, uB, vB, c;
-                                width = 512, height = 512,
-                                xlim = (0.0, 512.0), ylim = (0.0, 512.0),   # BUG-15
+                                width = img_width, height = img_height,
+                                xlim = img_xlim, ylim = img_ylim,           # BUG-15
                                 σₚ = sp, Δt_pair = Δt_pair,
                                 background = bg, peak = pk, noise_σ = nσ, rng = rng)
                 counters[bin] = c

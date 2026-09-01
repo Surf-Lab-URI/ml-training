@@ -22,14 +22,16 @@ A = parsed_args["jet_amp"]*(1.5-rand())   # moved here from args.jl so the seed 
 
 # ---Grid Setup---
 
-N = 512
-M = 512
+# Grid size comes from params.toml ([physics].grid_n/grid_m). The extent equals the size, so one
+# grid cell is one pixel and particle coordinates are image coordinates directly — see BUG-15.
+N = grid_n
+M = grid_m
 #grid = RectilinearGrid(GPU(), size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
 grid = RectilinearGrid(size=(N, M), extent=(N, M), topology=(Periodic, Periodic, Flat))
 
 # ---Particle Setup---
 
-Nparticles = Int(M*N/16)
+Nparticles = n_particles          # params.toml [physics].n_particles
 x₀ = rand(Nparticles)*M
 y₀ = rand(Nparticles)*N
 z₀ = zeros(Nparticles)
@@ -40,8 +42,8 @@ lagrangian_particles = LagrangianParticles(; x = x₀, y = y₀, z = z₀)
 # ---Model Setup---
 
 model = NonhydrostaticModel(grid;
-                            advection = WENO(order=5),
-                            closure = ScalarDiffusivity(ν=1e-5),
+                            advection = WENO(order=advection_order),      # [physics].advection_order
+                            closure = ScalarDiffusivity(ν=viscosity_nu),  # [physics].viscosity_nu
                             particles = lagrangian_particles)
 
 # ---Random Initial Conditions---
@@ -80,8 +82,9 @@ s₂ = dropdims(interior(sᵢ); dims=3)
 
 # defining a stable time step based on the CFL condition
 sₘ = maximum(s₂)
-tcfl = 0.5*grid.Δxᶠᵃᵃ/sₘ
-dt = tcfl*10
+tcfl = cfl_safety*grid.Δxᶠᵃᵃ/sₘ          # [physics].cfl_safety
+# dt is the SAVE interval, and so the displacement quantum the v1 renderer is limited to.
+dt = tcfl*save_interval_factor            # [physics].save_interval_factor
 st = isnothing(t_end) ? nt*dt : t_end    # moved from args.jl — see BUG-1
 
 # --- IC physical characterization (for §6 metadata) ---
@@ -100,7 +103,10 @@ end
 
 simulation = Simulation(model, Δt=tcfl, stop_time=st)
 
-wizard = TimeStepWizard(cfl=0.7, max_change=1.1, max_Δt=2*tcfl)        # The TimeStepWizard helps ensure stable time-stepping with a Courant-Freidrichs-Lewy (CFL) number of 0.7.
+# Adaptive stepping during the run — stability only, no effect on what is written out.
+# Governed by [physics].wizard_cfl / wizard_max_change / wizard_max_dt_factor.
+wizard = TimeStepWizard(cfl=wizard_cfl, max_change=wizard_max_change,
+                        max_Δt=wizard_max_dt_factor*tcfl)
 simulation.callbacks[:wizard] = Callback(wizard, IterationInterval(10))
 
 # ---Logging Simulation Progress---
@@ -176,8 +182,11 @@ try
             "grid_N"        => N,
             "grid_M"        => M,
             "extent"        => Float64(N),
-            "viscosity_nu"  => 1e-5,
-            "advection"     => "WENO(order=5)",
+            "viscosity_nu"  => viscosity_nu,
+            "advection"     => "WENO(order=$(advection_order))",
+            "cfl_safety"          => cfl_safety,
+            "save_interval_factor" => save_interval_factor,
+            "params_file"   => Params.paramfile(),
         ),
         "ic_spec" => Dict{String,Any}(
             "streamfunction_form" => "A*cos(l(round(mjet*sin(phij)))*y + k(round(mjet*cos(phij)))*x - phi[1,2]) + sum_{m,n} a[m,n]*cos(k(n-..)*x + l(m-..)*y - phi[m,n])",

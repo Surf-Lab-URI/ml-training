@@ -7,14 +7,18 @@
 #   ./unity/submit_rerender.sh /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_2026-06-12_04-50-52 50000
 set -euo pipefail
 
-SRC_RUN=${1:?"give the SOURCE run dir (must contain combined/)"}
-N=${2:-50000}
-CHUNK=${3:-200}
-PART=${4:-uri-cpu}
-KPART=${5:-12000}
+# Defaults come from params.toml — edit that file, not this script.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+eval "$(julia --project="$REPO" "$REPO/scripts/params_export.jl" 2>/dev/null || true)"
 
-PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
-ROOT="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
+SRC_RUN=${1:?"give the SOURCE run dir (must contain combined/)"}
+N=${2:-${PIV_N_SIMS:-50000}}
+CHUNK=${3:-200}
+PART=${4:-${PIV_PARTITION:-uri-cpu}}
+KPART=${5:-${PIV_PARTICLES_PER_IMAGE:-12000}}
+
+PROJ="${PIV_PROJECT_DIR:-$REPO}"
+ROOT="${PIV_OUTPUT_ROOT:?set run.output_root in params.toml}"
 STAMP=$(date +%Y-%m-%d_%H-%M-%S)
 OUT_RUN="$ROOT/run_labapp_$STAMP"
 NTASKS=$(( (N + CHUNK - 1) / CHUNK ))

@@ -31,9 +31,12 @@ for _try in 1 2 3 4 5; do
 done
 [ -n "$JULIA" ] || { echo "[fatal] julia unresolvable after 5 attempts on $(hostname)"; exit 1; }
 echo "[info] julia = $JULIA"
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}"
 export JULIA_CPU_TARGET=generic
-export PIV_LAB_APPEARANCE=1                     # <-- the lab-matched appearance
+# This job exists specifically to produce lab-matched images, so it pins the appearance rather
+# than taking params.toml's [imaging.appearance].mode — running it in "clean" mode would make the
+# output identical to the source campaign and the whole re-render pointless.
+export PIV_LAB_APPEARANCE=1
 
 # seeds handled by this array task
 FIRST=$(( BASE_SEED + (SLURM_ARRAY_TASK_ID - 1) * CHUNK + 1 ))

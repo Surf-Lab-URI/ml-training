@@ -1,32 +1,348 @@
-# Work Flow for ML Training Data Set
-2D Turbulence Simulation -> Combine and Conquer -> Image Gen
+# ml-training
 
-# Install Julia if you don't have it
-Install in your home directory on a super computer cluster like Unity or Expanse using instructions [here](https://julialang.org/downloads/).
+**Generates synthetic training data for deep-learning PIV: particle image pairs, plus the flow
+field that labels them.** 2-D turbulence with Lagrangian particles, rendered into image pairs at
+chosen displacements. Entirely Julia; runs on the URI/UMass Unity cluster.
 
-# Setup Julia environment
-```julia
-julia> cd("path/to/project")
-pkg> activate .
-pkg> instantiate
+**Every setting lives in [`params.toml`](params.toml).** That file is commented and is the only
+place you should need to edit. If you find yourself changing a number inside a `.jl` or `.sh` file,
+stop — the number belongs in `params.toml`, and if it isn't there yet, add it there.
+
+---
+
+## How it works
+
+```
+scripts/2DTurbulence.jl          1. SIMULATE   2-D turbulence + particles, one run per random seed
+                                               writes  combined/seed<N>.jld2
+datagen_v2/ImageGenV2.jl         2. RENDER     saved frames -> image pairs at chosen displacements
+                                               writes  med03/ med06/ ... one dir per bin
+scripts/make_report.py           3. CHECK      a PDF of what you generated. Always look at it.
 ```
 
-# Automation
-The simulation outputs two .jld2 files, one of field data and the other of particle positions. After the simulation has ran, these two outputs will automatically be passed into CombineAndConcquer.jl which combines the outputs into one .jld2 which is used in ImageGen.jl. 
+**Stage 2 re-runs no physics.** It reads frames stage 1 already saved, so an existing campaign can
+be re-rendered with different displacements or a different image appearance in minutes instead of
+thousands of core-hours. Both datasets currently in use were made this way, from one June
+simulation campaign. This is why `[run].keep_combined` matters: discard the simulation output and
+that campaign can never be re-rendered again.
 
-By default, ImageGen.jl will run following CombineAndConquer.jl; however, by passing the `--no_image_gen` flag when running 2DTurbulence.jl:
+`scripts/ImageGen.jl` is the **legacy** renderer, kept only so the 2026-06 and 2026-07 datasets stay
+reproducible. Its displacement targeting is quantised and its bin labels do not mean what they say.
+Use `datagen_v2/` for anything new.
+
+---
+
+# Running it on Unity — step by step
+
+Follow these in order. Steps 1–5 are once per person; steps 6 onward are how you generate data.
+
+## 1. Connect
+
 ```bash
-julia scripts/2DTurbulence.jl -t 100 --no_image_gen
-```
-only the simulation and combine and concquer will run. This way ImageGen.jl can be fine tuned to specific pixel displacements.
-
-For reproducible runs, pass `--seed <int>` (default 1234); the same seed and arguments regenerate the same flow and particle seeding:
-```bash
-julia scripts/2DTurbulence.jl --nt 20 --seed 42
+ssh <your_unity_username>@unity.rc.umass.edu
 ```
 
-Also by default, for storage purposes, pngs of all the image pairs are not produced. The first and last image pairs are shown for debugging purposes. To generate all image pairs, run ImageGen.jl using the -p flag:
+## 2. Get the code
+
+Work under `/work`, **not** your home directory: `$HOME` on Unity is NFS-mounted and is
+occasionally unresolvable at the instant a Slurm task starts. That failure killed 34 of 153 array
+tasks in one re-render, each with a bare `julia: command not found`.
+
 ```bash
-julia scripts/ImageGen.jl -f (out_dir * "combined" * vars * ".jld2") -v (vars) -p
+cd /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>
+git clone git@github.com:Surf-Lab-URI/ml-training.git
+cd ml-training
+git checkout dataSimulation
 ```
-This will then generate all image pairs at 10, 15, 20, 25, and 30 pixel displacements.  
+
+**Note the branch.** All of this work lives on `dataSimulation`. `main` is the lab's original
+baseline from April 2026 and does not contain the data-generation pipeline.
+
+## 3. Make Julia available
+
+Julia is **not on your PATH by default** on Unity. Install
+[juliaup](https://julialang.org/downloads/) into your home directory once:
+
+```bash
+curl -fsSL https://install.julialang.org | sh
+```
+
+Then add it to your PATH — put this line in your `~/.bashrc` so every login and every job has it:
+
+```bash
+export PATH="$HOME/.juliaup/bin:$PATH"
+```
+
+Confirm you get **1.12.6**, which is what `Manifest.toml` was built with:
+
+```bash
+julia --version        # julia version 1.12.6
+```
+
+> Do **not** use `module load julia` — the module tree only offers 1.10.5, which does not match the
+> manifest.
+
+## 4. Install the packages
+
+Point Julia's package depot at `/work` (again, not `$HOME`), then install:
+
+```bash
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/julia_depot
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+```
+
+Put that `export` in your `~/.bashrc` too. Instantiating takes 10–20 minutes the first time.
+
+For the report script (step 7) you also need Python. **Unity blocks `pip install --user`** (PEP 668,
+"externally-managed-environment"), so make a virtual environment — once:
+
+```bash
+module load python/3.11.7
+python3 -m venv /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv
+source /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv/bin/activate
+pip install numpy h5py matplotlib pandas pyarrow
+```
+
+Every time you want to run the report, load the module and activate the environment again:
+
+```bash
+module load python/3.11.7
+source /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv/bin/activate
+```
+
+## 5. Edit `params.toml`
+
+**This is the step everyone forgets.** The file ships with the paths of the account that built the
+original dataset, and all three will fail for you. Open it and change:
+
+| setting | point it at |
+|---|---|
+| `[run].output_root` | where datasets get written — needs terabytes, use the group's `/project` space |
+| `[unity].project_dir` | your checkout from step 2 |
+| `[unity].julia_depot` | the depot from step 4 |
+
+While you are in there, the settings you are most likely to want are near the top:
+`[run].n_sims` (how many simulations), `[run].nt` (frames per simulation),
+`[run].keep_combined` (whether the raw simulations are kept — read the warning), and
+`[bins.v2].medians` (which displacements to render).
+
+Check that everything resolved before submitting anything:
+
+```bash
+julia --project=. scripts/params_export.jl
+```
+
+That prints the settings the Slurm scripts will actually use. If a path still belongs to someone
+else, fix it now rather than finding out from a failed job three hours later.
+
+## 6. Run a pilot — always
+
+A hundred simulations take a few minutes and catch every configuration mistake that a hundred
+thousand would catch three days later.
+
+```bash
+./unity/submit_run.sh 100
+```
+
+This creates a timestamped folder under `[run].output_root`, snapshots the code it used, writes a
+`RUN_INFO.txt` recording exactly what was configured, and launches the Slurm array. Watch it:
+
+```bash
+squeue --me
+```
+
+## 7. Look at what came out
+
+```bash
+python scripts/make_report.py --root /project/.../run_<stamp>
+```
+
+Copy `report.pdf` to your laptop and open it. **Check three things before going any further:**
+the particle images actually have particles in them; the displacement magnitudes are in the range
+you asked for; and the flow-field arrows point somewhere sensible.
+
+## 8. Run the full campaign
+
+Set `[run].n_sims` in `params.toml` to the size you want, then:
+
+```bash
+nohup ./unity/submit_chunked.sh > chunked.log 2>&1 &
+```
+
+Use `submit_chunked.sh`, not `submit_run.sh`, for anything above a couple of thousand: Unity caps
+queued jobs per user at about 2000, and this driver submits in chunks and waits so it never trips
+the limit. Run it detached with `nohup` — it stays alive for the whole campaign.
+
+**How big is big?**
+
+```
+total samples = n_sims  x  number of bins in [bins.v2].medians
+```
+
+so 10 000 simulations with the default eight bins gives 80 000 samples. Storage is roughly 900 MB
+per simulation when `keep_combined = true` — about **9 TB for 10 000 simulations**. If you do not
+have that, set `keep_combined = false`, but read the warning in `params.toml` first: it cannot be
+undone.
+
+## 9. Re-render instead, when you can
+
+If a campaign was run with `keep_combined = true`, you can build a completely new dataset from it
+in minutes — different displacement bins, different image appearance — with no new physics:
+
+```bash
+# 1. edit [bins.v2].medians and/or [imaging.appearance] in params.toml
+# 2. then:
+./unity/submit_v2.sh /project/.../run_<stamp>
+```
+
+This is by far the cheapest thing in the pipeline. Reach for it before starting a new campaign.
+
+---
+
+## Running a few simulations by hand
+
+For debugging, or to look at a single case. This works the same on your laptop and inside an
+interactive Unity session:
+
+```bash
+julia --project=. -e 'using Pkg; Pkg.instantiate()'   # once
+julia --project=. scripts/2DTurbulence.jl --nt 40 --seed 42
+python scripts/make_report.py --root data
+```
+
+For a handful in a row, `scripts/run_batch.sh` runs them serially, taking its defaults from
+`params.toml` like everything else:
+
+```bash
+# on Unity, grab an interactive node first:
+srun --partition=uri-cpu --time=02:00:00 --mem=8G --cpus-per-task=4 --pty bash
+./scripts/run_batch.sh 5 40          # 5 simulations, 40 frames each
+```
+
+**It is serial**, so it is for looking at a few cases, not for building a dataset — a thousand
+simulations would take days. Use `unity/submit_run.sh` or `unity/submit_chunked.sh` for that.
+
+Simulate now, render later:
+
+```bash
+julia --project=. scripts/2DTurbulence.jl --nt 40 --seed 42 --no_image_gen
+julia --project=. datagen_v2/ImageGenV2.jl -f out/<vars>_combined.jld2 -v <vars>
+```
+
+Command-line flags override `params.toml`; anything you leave off comes from the file. Pass `-p` to
+also write PNGs — fine for a handful of pairs, far too slow for a campaign.
+
+---
+
+## What comes out
+
+```
+run_<stamp>/
+  RUN_INFO.txt        what this run was configured with — the authoritative record
+  combined/           raw simulations (only if keep_combined = true)
+  med03/ med06/ ...   one directory per displacement bin, one .jld2 per simulation
+  metadata/           one TOML sidecar per simulation: seed, physics, achieved displacements
+  manifest.parquet    every sidecar flattened into one table, for filtering
+  code/               a snapshot of the generator that produced this run
+  logs/               Slurm output
+```
+
+Each `.jld2` holds one image pair:
+
+```
+pairs/000001/A              512x512 uint8    first frame
+pairs/000001/B              512x512 uint8    second frame
+pairs/000001/fields/uA,vA   512x512 float32  displacement at A, IN PIXELS
+pairs/000001/fields/uB,vB   512x512 float32  displacement at B, in pixels
+```
+
+The fields are already displacements in pixels — velocity times the pair's time gap — so
+`sqrt(uA² + vA²)` is what a PIV algorithm should recover, with no unit conversion anywhere.
+
+**Split train/validation by SEED, not by sample.** Every bin from one simulation shares a flow
+field and a first image, so a per-sample split puts the same flow on both sides and the validation
+number becomes meaningless. `piv-models` does this correctly today (`common/data.py`); preserve
+that if you write a new loader.
+
+---
+
+## Checking a dataset
+
+```bash
+python scripts/make_report.py --root <RUN_DIR> --n 8 --format both
+```
+
+Produces `report.pdf` (and with `--format both`, `report.md` plus PNGs) containing:
+
+- **inventory** — bins, sample counts, and the `RUN_INFO.txt` and `params.toml` the run used;
+- **displacement distributions per bin**, with median / p90 / p99 / max. This is the page that
+  tells you whether the bin labels are honest: a `med20` directory should have a median near 20 px;
+- **simulation metadata** — what was constant across the campaign and what varied;
+- **random samples** — frame A, frame B, a red/green overlay, a zoom, a displacement-magnitude map,
+  and the flow field as arrows drawn 1:1 in pixels.
+
+Flags: `--n` how many samples, `--seed` which ones (reproducible), `--stat-files` how many files
+per bin to pool for statistics, `--out` where to write.
+
+---
+
+## When something goes wrong
+
+| symptom | cause and fix |
+|---|---|
+| `julia: command not found` at the prompt | Step 3 — juliaup is not on your PATH. |
+| `julia: command not found`, exit 127, in *some* array tasks only | `$HOME` was not resolvable when the task started. The job scripts already retry five times; if it persists, move your Julia install off `$HOME`. |
+| `set run.output_root in params.toml` | You skipped step 5. |
+| A bin directory has far fewer files than the others | Expected up to a point — a simulation that cannot reach a bin's target is skipped for that bin rather than mislabelled. A large shortfall means the target is out of reach: widen `[bins.v2].tolerance` or raise `[run].nt`. |
+| Tasks killed at the wall clock | Raise `[unity].time_limit`, or lower `[unity].chunk` so each task does less. |
+| Jobs rejected, `QOSMaxSubmitJobPerUserLimit` | Too many queued. Use `unity/submit_chunked.sh`. |
+| Images look empty, or particles sit outside the frame | `[imaging].width/height/xlim/ylim` no longer match `[physics].grid_n/grid_m`. They must agree — this was BUG-15. |
+
+---
+
+## Things it is easy to get wrong
+
+**More bins is not more data.** Every bin from one simulation shares the same frame A and the same
+particles; only frame B differs. More bins gives wider displacement coverage, which is useful, but
+the number of *independent flows* is `n_sims` however many bins you configure.
+
+**More pairs per simulation is not offered, deliberately.** The velocity field's decorrelation time
+was measured at about 110 saved frames while a simulation is only 40 frames long — the whole run
+sits inside one decorrelation time, so a second pair from a different start frame would be a
+near-duplicate. Diversity has to come from more seeds.
+
+**Image appearance matters more than you would guess.** A model trained on clean synthetic images
+loses most of its accuracy on real laboratory footage. `[imaging.appearance].mode = "lab"` is not
+cosmetic; leave it on unless you are running a deliberate ablation.
+
+**The realised jet amplitude is not `jet_amplitude`.** The code computes
+`A = jet_amplitude * (1.5 - rand())` after seeding, so it is uniform on 150–450 for the default of
+300, and differs for every simulation. Read the actual value per simulation from its metadata
+sidecar, never from `params.toml`.
+
+**`--sample` / `-k` is particles per image, not number of samples.** An unfortunate name kept for
+compatibility. It is `[imaging].particles_per_image`.
+
+---
+
+## Layout
+
+| path | what it is |
+|---|---|
+| `params.toml` | every setting, commented. The place to make changes. |
+| `scripts/` | entry points: simulation, legacy renderer, report, manifest, diagnostics |
+| `src/` | shared code: argument handling, parameter reader, image generation, combine |
+| `datagen_v2/` | the current renderer and its design document |
+| `unity/` | Slurm submitters and job scripts |
+| `notes/` | design notes and the operational runbook |
+| `bugs.md` | numbered bug log |
+
+Further reading, in the order it is usually needed:
+
+| file | what it holds |
+|---|---|
+| `datagen_v2/DATA_REQUIREMENTS.md` | why the v2 bins are what they are, measured against the lab data |
+| `notes/DATA_GENERATION_DESIGN.md` | the one-sample-per-simulation decision and the decorrelation measurement |
+| `notes/RUNBOOK.md` | operational notes from the original campaigns |
+| `unity/README.md` | Slurm specifics |
+| `bugs.md` | BUG-13 and BUG-14 explain why `datagen_v2/` replaced `scripts/ImageGen.jl` |

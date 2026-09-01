@@ -1,6 +1,8 @@
 using DrWatson
 @quickactivate "ml-training"
 
+include(joinpath(@__DIR__, "Params.jl"))
+
 using JLD2
 using ArgParse
 using Oceananigans
@@ -36,9 +38,10 @@ function parse_commandline()
             help = "save image pairs as PNG files"
             action = :store_true
         "--sample", "-k"
-            help = "number of particles to render in each image pair"
+            help = "PARTICLES rendered per image (seeding density, not sample count) " *
+                   "[params: imaging.particles_per_image]"
             arg_type = Int
-            default = 5000
+            default = nothing
         "--seed", "-s"
             help = "random seed used for particle subsampling"
             arg_type = Int
@@ -54,13 +57,56 @@ file = parsed_args["combined_file"]
 input_dir = parsed_args["input_dir"]
 vars = parsed_args["vars"]
 name = parsed_args["name"]
-save_pngs = parsed_args["save_pngs"]
-k_particles = parsed_args["sample"]
+# Unset flags fall back to params.toml — see src/Params.jl for the precedence rules.
+save_pngs = parsed_args["save_pngs"] || Params.get("imaging.save_pngs", false)
+k_particles = something(parsed_args["sample"], Params.get("imaging.particles_per_image", 12000))
 seed = parsed_args["seed"]
 rng = MersenneTwister(seed)
 # Output root is configurable for HPC array jobs (PIV_OUT_DIR); defaults to the repo.
 data_root = get(ENV, "PIV_OUT_DIR", projectdir())
 out_dir = joinpath(data_root, "data", "visual") * "/"
+
+# --- Image appearance -------------------------------------------------------------------------
+# Shared by both generators (scripts/ImageGen.jl and datagen_v2/ImageGenV2.jl) so there is exactly
+# one definition of what the images look like. All values come from params.toml
+# [imaging.appearance]; see the comments there for what each one does and why the ranges are wide.
+appearance_mode = Params.get("imaging.appearance.mode", "lab")
+lab_appearance = appearance_mode == "lab"
+lab_appearance ?
+    (@info "appearance = lab (gray background, low contrast, small particles, sensor noise)") :
+    (@info "appearance = clean (noiseless synthetic — for ablations, not for training data)")
+
+"""
+    appearance_draw(rng) -> (background, peak, particle_σ, noise_σ)
+
+Draw one image pair's rendering parameters. In "lab" mode each is uniform on `[lo, lo+span]`,
+redrawn for every pair — that per-pair domain randomisation is what makes the trained model
+tolerate imaging conditions it has not seen. In "clean" mode the four fixed values are returned.
+"""
+function appearance_draw(rng)
+    if lab_appearance
+        bg = Params.get_vector("imaging.appearance.lab_background",     [0.52, 0.14])
+        pk = Params.get_vector("imaging.appearance.lab_peak",           [1.55, 0.60])
+        sp = Params.get_vector("imaging.appearance.lab_particle_sigma", [0.55, 0.13])
+        nσ = Params.get_vector("imaging.appearance.lab_noise_sigma",    [0.060, 0.035])
+        return (Float32(bg[1] + bg[2]*rand(rng)),
+                Float32(pk[1] + pk[2]*rand(rng)),
+                Float64(sp[1] + sp[2]*rand(rng)),
+                Float32(nσ[1] + nσ[2]*rand(rng)))
+    else
+        return (Float32(Params.get("imaging.appearance.clean_background", 0.0)),
+                Float32(Params.get("imaging.appearance.clean_peak", 1.0)),
+                Float64(Params.get("imaging.appearance.clean_particle_sigma", 1.2)),
+                Float32(Params.get("imaging.appearance.clean_noise_sigma", 0.0)))
+    end
+end
+
+# Rendered image geometry. Must match the simulation grid — particles carry grid coordinates
+# straight into image space, so a mismatch renders them off-frame (this was BUG-15).
+img_width  = Params.get("imaging.width", 512)
+img_height = Params.get("imaging.height", 512)
+img_xlim   = Tuple(Params.get_vector("imaging.xlim", [0.0, 512.0]))
+img_ylim   = Tuple(Params.get_vector("imaging.ylim", [0.0, 512.0]))
 
 # ---Opening Combined JLD2 File---
 

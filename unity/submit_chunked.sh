@@ -9,19 +9,24 @@
 # Tunables via env: CHUNK (default 1000), MAXQ (default 1500).
 set -uo pipefail        # NOT -e: a transient sbatch hiccup must not kill the whole driver
 
-N=${1:-10000}
-NT=${2:-40}
-PART=${3:-cpu-preempt}
-BASE=${4:-0}
+# Defaults come from params.toml — edit that file, not this script. Positional arguments and the
+# environment still override it for a one-off run.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+eval "$(julia --project="$REPO" "$REPO/scripts/params_export.jl" 2>/dev/null || true)"
+
+N=${1:-${PIV_N_SIMS:-10000}}
+NT=${2:-${PIV_NT:-40}}
+PART=${3:-${PIV_PARTITION:-cpu-preempt}}
+BASE=${4:-${PIV_BASE_SEED:-0}}
 CHUNK=${CHUNK:-1000}    # sims per chunk (< QOS submit limit 2000)
-KEEP_COMBINED=${KEEP_COMBINED:-1}   # 1=keep raw combined files; set 0 at 100k scale (~9 TB)
+KEEP_COMBINED=${KEEP_COMBINED:-${PIV_KEEP_COMBINED:-1}}   # params.toml [run].keep_combined
 MAXQ=${MAXQ:-900}       # submit next chunk only when queued+running < this.
                         # Must satisfy MAXQ + CHUNK < 2000 (QOS cap) → 900+1000=1900 ✓
 
-PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
-# Output root: defaults to /project, but override with PIV_ROOT to use fast /scratch
+PROJ="${PIV_PROJECT_DIR:-$REPO}"
+# Output root: params.toml [run].output_root, but PIV_ROOT still overrides to use fast /scratch
 # (recommended at 100k scale — /project is the slow capacity tier and chokes on many small files).
-ROOT="${PIV_ROOT:-/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset}"
+ROOT="${PIV_ROOT:-${PIV_OUTPUT_ROOT:?set run.output_root in params.toml}}"
 PIX="10,20,30"
 
 STAMP=$(date +%Y-%m-%d_%H-%M-%S)

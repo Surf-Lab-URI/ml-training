@@ -10,22 +10,29 @@
 # range moves the model's 22 px ceiling — is untested.
 set -euo pipefail
 
+# Defaults come from params.toml — edit that file, not this script. Positional arguments below
+# still override it for a one-off run. See params.toml's header for the precedence rules.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+eval "$(julia --project="$REPO" "$REPO/scripts/params_export.jl" 2>/dev/null || true)"
+
 SRC_RUN=${1:?"give the SOURCE run dir (must contain combined/)"}
-N=${2:-200}
-CHUNK=${3:-50}
-PART=${4:-uri-cpu}
-KPART=${5:-12000}
+N=${2:-${PIV_N_SIMS:-200}}
+CHUNK=${3:-${PIV_CHUNK:-50}}
+PART=${4:-${PIV_PARTITION:-uri-cpu}}
+KPART=${5:-${PIV_PARTICLES_PER_IMAGE:-12000}}
 # Wall clock per array task. A 200-seed chunk is a lot of work: each seed reads 41
 # frames, solves 8 displacement targets and renders 16 images. Measure one task
 # before scaling, and raise this if tasks are being killed at the limit.
-TIME=${6:-04:00:00}
+TIME=${6:-${PIV_TIME_LIMIT:-04:00:00}}
 
-PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
-ROOT="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
+PROJ="${PIV_PROJECT_DIR:-$REPO}"
+ROOT="${PIV_OUTPUT_ROOT:?set run.output_root in params.toml}"
 STAMP=$(date +%Y-%m-%d_%H-%M-%S)
 OUT_RUN="$ROOT/run_v2_$STAMP"
 NTASKS=$(( (N + CHUNK - 1) / CHUNK ))
-BINS="med03 med06 med09 med12 med16 med20 med26 med30"
+# Bin names come from params.toml [bins.v2].medians via params_export.jl, so this list cannot
+# drift away from what the generator actually writes.
+BINS="${PIV_BINS:-med03 med06 med09 med12 med16 med20 med26 med30}"
 
 # A bare number here means $RUN was unset and the arguments shifted along one.
 case "$SRC_RUN" in

@@ -12,4 +12,14 @@ sh/
 *.sh
 # campaign entry-point scripts must stay tracked (overrides *.sh):
 !unity/*.sh
+!scripts/run_batch.sh
 dsO
+.Rhistory
+.ipynb_checkpoints/
+
+# Dataset reports written by scripts/make_report.py. These describe a specific run and belong
+# with that run's output directory, not in the repository.
+report.pdf
+report.md
+*_figs/
+

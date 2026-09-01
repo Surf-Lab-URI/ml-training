@@ -20,7 +20,8 @@ set -euo pipefail
 CHUNK=${CHUNK:-200}
 KPART=${KPART:-12000}
 BASE_SEED=${BASE_SEED:-0}
-BINS="med03 med06 med09 med12 med16 med20 med26 med30"
+# Bin directory names, passed down by the submitter from params.toml [bins.v2].medians.
+BINS="${PIV_BINS:-med03 med06 med09 med12 med16 med20 med26 med30}"
 
 export PATH="$HOME/.juliaup/bin:$PATH"
 # $HOME is on NFS and is occasionally not resolvable the instant a task starts, which makes
@@ -38,10 +39,11 @@ for _try in 1 2 3 4 5; do
 done
 [ -n "$JULIA" ] || { echo "[fatal] julia unresolvable after 5 attempts on $(hostname)"; exit 1; }
 echo "[info] julia = $JULIA"
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}"
 export JULIA_CPU_TARGET=generic
-export PIV_LAB_APPEARANCE=1                    # lab-matched appearance, as in the v1 re-render
-# PIV_V2_MEDIANS / PIV_V2_TOL / PIV_V2_LOOSE are passed through by the submitter if set.
+# Image appearance and bin targets now come from params.toml ([imaging.appearance], [bins.v2]).
+# PIV_LAB_APPEARANCE / PIV_V2_MEDIANS / PIV_V2_TOL / PIV_V2_LOOSE still override it if exported
+# by the submitter, which is how a single array task can be run with a one-off setting.
 
 FIRST=$(( BASE_SEED + (SLURM_ARRAY_TASK_ID - 1) * CHUNK + 1 ))
 LAST=$((  BASE_SEED + SLURM_ARRAY_TASK_ID * CHUNK ))

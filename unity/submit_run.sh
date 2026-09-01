@@ -12,13 +12,18 @@
 #   ./unity/submit_run.sh 100000 40 cpu-preempt
 set -euo pipefail
 
-N=${1:-1000}
-NT=${2:-40}
-PART=${3:-uri-cpu}
-BASE_SEED=${4:-0}
+# Defaults come from params.toml — edit that file, not this script. The positional arguments
+# below still override it for a one-off run.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+eval "$(julia --project="$REPO" "$REPO/scripts/params_export.jl" 2>/dev/null || true)"
 
-PROJ="/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
-ROOT="/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
+N=${1:-${PIV_N_SIMS:-1000}}
+NT=${2:-${PIV_NT:-40}}
+PART=${3:-${PIV_PARTITION:-uri-cpu}}
+BASE_SEED=${4:-${PIV_BASE_SEED:-0}}
+
+PROJ="${PIV_PROJECT_DIR:-$REPO}"
+ROOT="${PIV_OUTPUT_ROOT:?set run.output_root in params.toml}"
 PIX="10,20,30"
 
 STAMP=$(date +%Y-%m-%d_%H-%M-%S)

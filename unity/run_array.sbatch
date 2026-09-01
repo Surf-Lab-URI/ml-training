@@ -16,7 +16,7 @@ SEED=$(( BASE_SEED + SLURM_ARRAY_TASK_ID ))
 
 # Julia 1.12.6 (juliaup), packages on /work, portable cache (no per-node recompile)
 export PATH="$HOME/.juliaup/bin:$PATH"
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}"
 export JULIA_CPU_TARGET=generic
 
 # per-task node-local scratch so parallel tasks never collide

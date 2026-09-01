@@ -1,0 +1,316 @@
+####################################################################################################
+#  params.toml — every knob in the PIV training-data pipeline, in one place.
+#
+#  EDIT THIS FILE, NOT THE SOURCE. Every value below is read at run time. If you find yourself
+#  opening a .jl file to change a number, that number is missing from here — please add it rather
+#  than editing in place, or the next person will not find it.
+#
+#  ------------------------------------------------------------------------------------------------
+#  How the pipeline fits together (three stages, run separately, often weeks apart):
+#
+#     1. SIMULATE   scripts/2DTurbulence.jl      2-D turbulence + Lagrangian particles
+#                     -> combined/seed<N>.jld2   (the raw flow; keep it, see [run].keep_combined)
+#
+#     2. RENDER v1  scripts/ImageGen.jl          integer frame gaps, bins named by MAX displacement
+#                     -> pix10/ pix20/ pix30/
+#
+#     2'. RENDER v2 datagen_v2/ImageGenV2.jl     fractional frame gaps, bins named by MEDIAN
+#                     -> med03/ ... med30/       displacement. Supersedes v1; use this.
+#
+#  Stages 2 and 2' are RE-RENDERS: they read an existing combined/ directory and write new images
+#  without re-running any physics. That is why [run].keep_combined matters so much — throw the
+#  combined files away and you can never re-render that campaign again.
+#
+#  ------------------------------------------------------------------------------------------------
+#  Precedence, highest first:   command-line flag  >  environment variable  >  this file
+#
+#  So this file sets the defaults, and a one-off experiment can override a single value on the
+#  command line without editing anything. A run's actual resolved values are always written to
+#  RUN_INFO.txt and to each sample's metadata sidecar — trust those over this file when reading
+#  back an old dataset.
+####################################################################################################
+
+
+####################################################################################################
+[run]
+####################################################################################################
+# The campaign-level settings: how much data, and where it goes.
+
+# How many simulations to run. Each one is an INDEPENDENT flow (different seed), and independent
+# flows are the only real source of diversity in this dataset — see the long note in [bins].
+n_sims = 10000
+
+# Seeds are  base_seed + 1  ...  base_seed + n_sims.
+# Use base_seed to extend an existing campaign without colliding: if you already have seeds 1-10000,
+# set base_seed = 10000 and the next run produces 10001-20000.
+base_seed = 0
+
+# Seed for a SINGLE manual simulation (`julia scripts/2DTurbulence.jl` with no --seed). A campaign
+# ignores this: the Slurm array assigns each task base_seed + task_id. Only relevant when you are
+# running one simulation by hand to look at it.
+seed = 1234
+
+# Frames saved per simulation. The renderers pick frame A and frame B out of these, so nt bounds
+# the largest displacement you can reach: the biggest bin needs the most frames between A and B.
+# See [bins.v2].medians for the arithmetic. 40 is the value every production run has used.
+nt = 40
+
+# Keep the raw combined/seed<N>.jld2 files after rendering?
+#
+#   true   ~900 MB per simulation. Lets you re-render later with different bins, a different
+#          appearance, or a generator that does not exist yet. Both the v1 lab-appearance pass
+#          and the whole of v2 were re-renders of a June campaign that was kept.
+#   false  Saves roughly 9 TB at the 10 000-sim scale, and permanently forecloses re-rendering.
+#
+# This is a ONE-WAY DOOR. Default to true unless you are certain, and are short of quota.
+keep_combined = true
+
+# Where datasets are written. Each campaign gets its own timestamped subdirectory underneath.
+# CHANGE THIS to your own project space — the default points at the account that built the dataset.
+output_root = "/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
+
+
+####################################################################################################
+[physics]
+####################################################################################################
+# The fluid simulation itself (Oceananigans NonhydrostaticModel, 2-D, doubly periodic).
+#
+# WARNING: changing anything in this section makes your data incomparable with every dataset
+# generated so far. That is sometimes exactly what you want — but do it deliberately, and say so
+# in your run notes. Nothing here has been varied across any production campaign to date.
+
+# --- Grid ------------------------------------------------------------------------------------
+# The domain is grid_n x grid_m grid points with a physical extent equal to grid_n, so ONE GRID
+# CELL IS ONE PIXEL. That identity is load-bearing: particle coordinates are used directly as
+# image coordinates, and displacements come out in pixels with no conversion anywhere.
+# If you change grid_n you must change [imaging].width/height and [imaging].xlim/ylim to match,
+# or particles will be rendered outside the frame (this was BUG-15).
+grid_n = 512
+grid_m = 512
+
+# --- Fluid -----------------------------------------------------------------------------------
+# Kinematic viscosity. Low, because we want a well-developed enstrophy cascade with structure
+# down to near the grid scale — that small-scale structure is what the network learns to track.
+viscosity_nu = 1e-5
+
+# Advection scheme order for the WENO solver. 5 is a good accuracy/cost balance; must be odd.
+advection_order = 5
+
+# --- Lagrangian particles --------------------------------------------------------------------
+# How many tracer particles the SIMULATION carries. This is the pool; the renderer then draws
+# [imaging].particles_per_image of them for each image. Historically this was written as
+# grid_n*grid_m/16, i.e. one particle per 4x4 block of pixels.
+# It must be >= particles_per_image or the renderer silently gets fewer particles than you asked.
+n_particles = 16384
+
+# --- Initial condition -------------------------------------------------------------------------
+# The flow starts from a random streamfunction: one strong "jet" mode plus n_modes random modes.
+#
+#   psi = A*cos(l_jet*y + k_jet*x - phi) + sum_{m,n} a[m,n]*cos(k_n*x + l_m*y - phi[m,n])
+#
+# IMPORTANT — jet_amplitude is NOT the amplitude that gets used. The code computes
+#
+#       A = jet_amplitude * (1.5 - rand())
+#
+# AFTER seeding the RNG, so the realised amplitude is uniform on [0.5, 1.5] x jet_amplitude,
+# i.e. 150-450 for the default. This is intentional: it gives every seed a different jet strength,
+# which is a cheap and effective source of flow diversity. The realised A is recorded per sample
+# in the metadata sidecar as ic_spec.A_jet_amplitude — read it there, do not assume this number.
+jet_amplitude = 300.0
+
+# Number of modes in the random part of the streamfunction (sets both n_max and m_max).
+# More modes = more small-scale structure in the initial condition.
+n_modes = 21
+
+# Wavenumber of the horizontal jet. The jet's direction is also randomised per seed.
+m_jet = 2
+
+# --- Time stepping -----------------------------------------------------------------------------
+# The initial step is derived from the CFL condition on the initial velocity field:
+#
+#       dt_cfl  = cfl_safety * dx / max|u|          (a stable step)
+#       dt_save = dt_cfl * save_interval_factor     (how often a frame is written)
+#
+# so save_interval_factor sets the time between saved frames, and therefore the DISPLACEMENT
+# QUANTUM of the v1 renderer: with integer frame gaps, v1 can only reach multiples of the
+# per-frame displacement (~5 px here). That limitation is what v2's fractional frames removed.
+cfl_safety = 0.5
+save_interval_factor = 10
+
+# Oceananigans' adaptive time-step wizard, which runs during the simulation. These govern
+# stability, not output: leave them alone unless the solver is blowing up.
+wizard_cfl = 0.7          # target Courant number
+wizard_max_change = 1.1   # most the step may grow between adjustments
+wizard_max_dt_factor = 2  # hard ceiling, as a multiple of dt_cfl
+
+# End time of the simulation. Leave commented out to derive it as nt * dt_save, which is what
+# every production run has done. Set it only if you want a fixed physical duration instead.
+# t_end = 100.0
+
+
+####################################################################################################
+[imaging]
+####################################################################################################
+# Turning a simulation into a pair of particle images plus the flow field that labels them.
+
+# How many particles to render into each image, drawn at random from the [physics].n_particles pool.
+#
+# NOTE THE NAME. The command-line flag for this is `--sample`/`-k`, which reads like "number of
+# samples" and is not: it is SEEDING DENSITY, particles per image. 12000 particles in a 512x512
+# frame is roughly 0.046 particles per pixel, chosen to match the lab's seeding.
+# Must be <= [physics].n_particles.
+particles_per_image = 12000
+
+# Output image size. Keep equal to [physics].grid_n/grid_m — see the BUG-15 note there.
+width = 512
+height = 512
+xlim = [0.0, 512.0]
+ylim = [0.0, 512.0]
+
+# Also write a PNG next to each .jld2? Useful for eyeballing a small run, far too slow and
+# far too much disk for a real campaign. Use scripts/make_report.py instead.
+save_pngs = false
+
+
+####################################################################################################
+[imaging.appearance]
+####################################################################################################
+# How the particle images LOOK. This matters more than it sounds: a model trained on clean
+# synthetic images and tested on real laboratory footage loses most of its accuracy, and matching
+# the appearance was worth more than any architecture change we tried.
+#
+# mode = "lab"    match the URI wind-wave tank: gray background, low contrast, small particles,
+#                 sensor noise. Every dataset that produced a usable model used this.
+# mode = "clean"  the original noiseless rendering. Kept for ablations and debugging only.
+mode = "lab"
+
+# Each parameter is drawn UNIFORMLY per image pair, as  lo + span * rand().  This per-pair
+# domain randomisation means the model sees a range of imaging conditions rather than one, which
+# is what makes it transfer to footage it was not trained on. Widen the spans to cover a new rig;
+# do not narrow them to a single value unless you are deliberately testing sensitivity.
+#
+#                    lo      span     resulting range
+# background      0.52      0.14      ~44-60 / 255  (gray, like the tank's backscatter)
+# peak            1.55      0.60      ~3.5-5x contrast
+# particle_sigma  0.55      0.13      ~1.8-2.7 px particle diameter
+# noise_sigma     0.060     0.035     ~4-7 / 255 sensor noise
+lab_background     = [0.52,  0.14]
+lab_peak           = [1.55,  0.60]
+lab_particle_sigma = [0.55,  0.13]
+lab_noise_sigma    = [0.060, 0.035]
+
+# The "clean" mode's fixed values: black background, unit contrast, larger particles, no noise.
+clean_background     = 0.0
+clean_peak           = 1.0
+clean_particle_sigma = 1.2
+clean_noise_sigma    = 0.0
+
+
+####################################################################################################
+[bins]
+####################################################################################################
+# A "bin" is a target displacement. One simulation produces ONE IMAGE PAIR PER BIN, so a campaign
+# of n_sims simulations yields
+#
+#       total samples = n_sims * (number of bins)
+#
+# READ THIS BEFORE ADDING BINS — it is the most commonly misunderstood part of the pipeline.
+#
+# All bins from one simulation share the SAME frame A and the SAME randomly drawn particle subset;
+# only frame B differs. So they are eight views of one flow, not eight independent samples. Adding
+# bins buys DISPLACEMENT COVERAGE, which is genuinely useful, but it does not buy flow diversity —
+# the number of independent flows in your dataset is n_sims, whatever the bin count.
+#
+# The corollary that actually bites: THE TRAIN/VAL SPLIT MUST BE BY SEED, NOT BY SAMPLE, or the
+# same flow appears on both sides and your validation number is fiction. piv-models does this
+# correctly today (common/data.py, make_splits). If you write a new loader, preserve that.
+#
+# Why not several pairs per simulation at different START times? Because the velocity field's
+# decorrelation time was measured at tau ~ 110 saved frames (~30 time units), while a run is only
+# nt = 40 frames — the entire simulation sits inside one decorrelation time. Pairs from different
+# start frames are near-duplicate flows. One anchor time per simulation is deliberate.
+pairs_per_sim = 1        # fixed at 1 by the above. Present so the constraint is visible, not hidden.
+
+
+####################################################################################################
+[bins.v2]
+####################################################################################################
+# THE CURRENT GENERATOR. Bins are named by the MEDIAN displacement they achieve, in pixels.
+# datagen_v2/ImageGenV2.jl interpolates particle positions to a FRACTIONAL frame index, so any
+# target is reachable — it solves for the frame gap that hits the requested median.
+#
+# Bin med<NN> has median NN px and a maximum of about 1.67 x NN, a ratio measured to be near
+# constant across a 5x range of displacement. So this list spans roughly 5 px to 50 px of maximum
+# displacement, chosen to put the model's usable ceiling comfortably past the ~24 px maximum
+# observed in the laboratory data.
+#
+# ADDING BINS: intermediate values are free. Values ABOVE the current maximum are not — the
+# generator anchors frame A so the largest bin still fits before the final frame, so a bigger
+# maximum pushes A earlier into less-developed turbulence. On a 40-frame run:
+#       median 13.6 px -> A at frame 34      median 20 px -> frame 31      median 30 px -> frame 27
+# If you need larger displacements, raise [run].nt rather than accepting an earlier anchor.
+medians = [3, 6, 9, 12, 16, 20, 26, 30]
+
+# Relative tolerance on the achieved median. The solver iterates until the realised median is
+# within this fraction of the target.
+tolerance = 0.05
+
+# What to do when a simulation cannot hit a target within tolerance (it is too slow or too fast
+# for the frames available):
+#   false  SKIP the sample. The dataset stays honest: every file in med20/ really has median ~20 px.
+#   true   Write it anyway, flagged in the metadata.
+# Keep this false. Writing a mislabelled sample under a bin name it does not match was BUG-13,
+# and it silently capped the trained model's usable displacement range for two months.
+write_out_of_tolerance = false
+
+
+####################################################################################################
+[bins.v1]
+####################################################################################################
+# LEGACY — the original generator, scripts/ImageGen.jl. Kept so the 2026-06/07 datasets can be
+# reproduced; do not use it for new data.
+#
+# Bins were named by TARGET MAXIMUM displacement and computed as an integer frame gap,
+# dp = floor(pix / per_frame_displacement). Two consequences, both bad:
+#   - achievable displacement was quantised in steps of ~5 px, so the requested target was
+#     usually not the delivered one;
+#   - the names are maxima, not typicals: "pix30" actually has a median of 13.6 px.
+# Both are fixed in v2. This is BUG-13/BUG-14.
+pix_values = [10, 20, 30]
+
+
+####################################################################################################
+[unity]
+####################################################################################################
+# Slurm settings for the URI Unity cluster. THE THREE PATHS BELOW ARE PER-USER — every one of them
+# points at the account that built the original dataset and will fail for anyone else. Change all
+# three before your first run.
+
+# Your checkout of this repository, on a filesystem the compute nodes can read.
+project_dir = "/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
+
+# Julia's package depot. Must NOT be on your home directory: $HOME is NFS-mounted and intermittently
+# unresolvable at task start, which killed 34 of 153 array tasks with "julia: command not found" in
+# the 2026-08-26 re-render before this was moved.
+julia_depot = "/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot"
+
+# Slurm partition. "uri-cpu" is the group's allocation; "cpu-preempt" is free but your jobs can be
+# killed and requeued at any time — fine for a large simulation campaign that checkpoints per seed,
+# painful for anything interactive.
+partition = "uri-cpu"
+
+# Simulations per array task. Total tasks = ceil(n_sims / chunk). Slurm has a submit limit around
+# 2000 tasks, and the driver chunks the campaign to stay under it.
+chunk = 50
+
+# Wall clock per array task. Must cover chunk simulations end to end, so scale it with chunk.
+time_limit = "04:00:00"
+
+# Maximum array tasks running at once (the "%N" throttle). Being polite to the shared queue; raising
+# it does not get you through faster when the partition is busy.
+max_concurrent = 100
+
+# Memory and cores per task. The simulation is single-threaded but Oceananigans and the JLD2 writer
+# both benefit from a little headroom.
+mem = "8G"
+cpus_per_task = 4
