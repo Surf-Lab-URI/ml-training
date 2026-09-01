@@ -23,7 +23,7 @@ KPART=${5:-${PIV_PARTICLES_PER_IMAGE:-12000}}
 # Wall clock per array task. A 200-seed chunk is a lot of work: each seed reads 41
 # frames, solves 8 displacement targets and renders 16 images. Measure one task
 # before scaling, and raise this if tasks are being killed at the limit.
-TIME=${6:-${PIV_TIME_LIMIT:-04:00:00}}
+TIME=${6:-${PIV_TIME_RENDER:-04:00:00}}
 
 PROJ="${PIV_PROJECT_DIR:-$REPO}"
 ROOT="${PIV_OUTPUT_ROOT:?set run.output_root in params.toml}"
@@ -123,7 +123,9 @@ cp "$PROJ/src/ImageGenFunc.jl"             "$OUT_RUN/code/" 2>/dev/null || true
 } > "$OUT_RUN/RUN_INFO.txt"
 
 JID=$(sbatch --parsable \
-      --partition="$PART" --time="$TIME" --array=1-${NTASKS}%100 \
+      --partition="$PART" --time="$TIME" \
+      --mem="${PIV_MEM:-8G}" --cpus-per-task="${PIV_CPUS_PER_TASK:-4}" \
+      --array=1-${NTASKS}%${PIV_MAX_CONCURRENT:-100} \
       --output="$OUT_RUN/logs/v2_%A_%a.out" --error="$OUT_RUN/logs/v2_%A_%a.err" \
       --export=ALL,SRC_RUN="$SRC_RUN",OUT_RUN="$OUT_RUN",PROJ="$PROJ",CHUNK="$CHUNK",KPART="$KPART",BASE_SEED="$BASE_SEED" \
       "$PROJ/unity/rerender_v2.sbatch")

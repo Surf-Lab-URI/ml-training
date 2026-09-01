@@ -61,7 +61,9 @@ GITSHA=$(cd "$PROJ" && git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 # --- 3. submit the per-sim array, pointed at this run folder ---
 JID=$(sbatch --parsable \
-      --partition="$PART" --time=00:40:00 --array=1-${N}%100 \
+      --partition="$PART" --time="${PIV_TIME_SIMULATE:-00:40:00}" \
+      --mem="${PIV_MEM:-8G}" --cpus-per-task="${PIV_CPUS_PER_TASK:-4}" \
+      --array=1-${N}%${PIV_MAX_CONCURRENT:-100} \
       --output="$RUN_DIR/logs/piv_%A_%a.out" --error="$RUN_DIR/logs/piv_%A_%a.err" \
       --export=ALL,RUN_DIR="$RUN_DIR",NT="$NT",BASE_SEED="$BASE_SEED",PROJ="$PROJ" \
       "$PROJ/unity/run_array.sbatch")

@@ -73,7 +73,9 @@ while [ "$a" -le "$N" ]; do
     done
 
     jid=$(sbatch --parsable \
-          --partition="$PART" --time=00:40:00 --array=1-${sz}%1000 \
+          --partition="$PART" --time="${PIV_TIME_SIMULATE:-00:40:00}" \
+          --mem="${PIV_MEM:-8G}" --cpus-per-task="${PIV_CPUS_PER_TASK:-4}" \
+          --array=1-${sz}%${PIV_MAX_CONCURRENT:-1000} \
           --output="$RUN_DIR/logs/piv_%A_%a.out" --error="$RUN_DIR/logs/piv_%A_%a.err" \
           --export=ALL,RUN_DIR="$RUN_DIR",NT="$NT",BASE_SEED="$off",PROJ="$PROJ",KEEP_COMBINED="$KEEP_COMBINED" \
           "$PROJ/unity/run_array.sbatch" 2>>"$RUN_DIR/logs/submit.err")

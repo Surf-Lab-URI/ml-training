@@ -18,7 +18,7 @@ Each step is explained in full in the **Detailed guide** below; if a command fai
 **1. Connect and go to the shared checkout.**
 
 ```bash
-ssh <your_unity_username>@unity.rc.umass.edu
+ssh YOUR_USERNAME@unity.rc.umass.edu
 cd /project/pi_nicholas_pizzo_uri_edu/arup/ml-training
 ```
 
@@ -26,14 +26,19 @@ cd /project/pi_nicholas_pizzo_uri_edu/arup/ml-training
 you cannot use anyone else's install. Once, then it is done forever:
 
 ```bash
-curl -fsSL https://install.julialang.org | sh
-cat >> ~/.bashrc <<'EOF'
+# Add the two settings, but only once — running this twice would duplicate them.
+grep -q juliaup ~/.bashrc || cat >> ~/.bashrc <<'EOF'
 export PATH="$HOME/.juliaup/bin:$PATH"
 export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
 EOF
 source ~/.bashrc
-julia --version                                    # expect 1.12.6
+
+# Install only if you do not already have Julia. Re-running the installer on an existing
+# ~/.juliaup fails with "that folder already exists", which is confusing but harmless.
+julia --version || curl -fsSL https://install.julialang.org | sh
 ```
+
+You want **1.12.6**, which is what `Manifest.toml` was built with.
 
 The second line points at the group's shared, already-populated package depot, so there is nothing
 to install and no `Pkg.instantiate()` to wait through.
@@ -61,7 +66,8 @@ It prints the run folder it created, under
 ```bash
 module load python/3.11.7
 source /work/pi_nicholas_pizzo_uri_edu/arup_mazumder/piv-venv/bin/activate
-python scripts/make_report.py --root /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_<stamp>
+RUN=/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_2026-09-01_21-12-58   # yours
+python scripts/make_report.py --root "$RUN"
 ```
 
 Copy the resulting `report.pdf` to your laptop and open it. If the images have particles in them and
@@ -72,9 +78,12 @@ the displacements match what you asked for, the pipeline is working — scale up
 point at your copy instead — every script honours this:
 
 ```bash
-cp params.toml my_params.toml          # already gitignored
-export PIV_PARAMS=$PWD/my_params.toml
+cp params.toml "${USER}_params.toml"           # already gitignored
+export PIV_PARAMS="$PWD/${USER}_params.toml"   # add to ~/.bashrc to make it stick
 ```
+
+Name it after yourself, not `my_params.toml` — the checkout is shared, so a generic name is one
+everyone else would collide with.
 
 ---
 
@@ -109,7 +118,7 @@ Follow these in order. Steps 1–5 are once per person; steps 6 onward are how y
 ### 1. Connect
 
 ```bash
-ssh <your_unity_username>@unity.rc.umass.edu
+ssh YOUR_USERNAME@unity.rc.umass.edu
 ```
 
 ### 2. Get the code
@@ -189,7 +198,7 @@ if you ever do need to add a package, do it when nobody else is mid-install.
 <summary><b>Installing from scratch instead</b> — for a new allocation, or outside this group</summary>
 
 ```bash
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/julia_depot
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/$USER/julia_depot
 julia --project=. -e 'using Pkg; Pkg.instantiate()'      # 10-20 minutes
 ```
 
@@ -198,8 +207,8 @@ build a virtual environment:
 
 ```bash
 module load python/3.11.7
-python3 -m venv /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv
-source /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv/bin/activate
+python3 -m venv /work/pi_nicholas_pizzo_uri_edu/$USER/piv-venv
+source /work/pi_nicholas_pizzo_uri_edu/$USER/piv-venv/bin/activate
 pip install numpy h5py matplotlib pandas pyarrow
 ```
 
@@ -244,9 +253,9 @@ become everyone's local changes and collide the moment two people want different
 personal copy instead:
 
 ```bash
-cp params.toml my_params.toml          # already gitignored
-# edit my_params.toml
-export PIV_PARAMS=$PWD/my_params.toml
+cp params.toml "${USER}_params.toml"           # already gitignored
+# edit ${USER}_params.toml
+export PIV_PARAMS="$PWD/${USER}_params.toml"   # add to ~/.bashrc to make it stick
 ```
 
 The generators, `params_export.jl` and the Slurm submitters all read `PIV_PARAMS` when it is set
@@ -272,7 +281,7 @@ squeue --me
 ### 7. Look at what came out
 
 ```bash
-python scripts/make_report.py --root /project/.../run_<stamp>
+python scripts/make_report.py --root "$RUN"
 ```
 
 Copy `report.pdf` to your laptop and open it. **Check three things before going any further:**
@@ -310,7 +319,8 @@ in minutes — different displacement bins, different image appearance — with 
 ```bash
 # 1. edit [bins.v2].medians and/or [imaging.appearance] in params.toml
 # 2. then:
-./unity/submit_v2.sh /project/.../run_<stamp>
+RUN=/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_2026-06-12_04-50-52
+./unity/submit_v2.sh "$RUN"
 ```
 
 This is by far the cheapest thing in the pipeline. Reach for it before starting a new campaign.
@@ -344,7 +354,8 @@ Simulate now, render later:
 
 ```bash
 julia --project=. scripts/2DTurbulence.jl --nt 40 --seed 42 --no_image_gen
-julia --project=. datagen_v2/ImageGenV2.jl -f out/<vars>_combined.jld2 -v <vars>
+VARS=$(basename out/*_combined.jld2 _combined.jld2)
+julia --project=. datagen_v2/ImageGenV2.jl -f "out/${VARS}_combined.jld2" -v "$VARS"
 ```
 
 Command-line flags override `params.toml`; anything you leave off comes from the file. Pass `-p` to
@@ -412,7 +423,7 @@ that if you write a new loader.
 ## Checking a dataset
 
 ```bash
-python scripts/make_report.py --root <RUN_DIR> --n 8 --format both
+python scripts/make_report.py --root "$RUN" --n 8 --format both
 ```
 
 Produces `report.pdf` (and with `--format both`, `report.md` plus PNGs) containing:

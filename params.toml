@@ -312,8 +312,12 @@ partition = "uri-cpu"
 # 2000 tasks, and the driver chunks the campaign to stay under it.
 chunk = 50
 
-# Wall clock per array task. Must cover chunk simulations end to end, so scale it with chunk.
-time_limit = "04:00:00"
+# Wall clock per array task. These are different jobs with different costs, so they get separate
+# values: a simulation task runs ONE simulation (~3-4 min at nt=40), while a render task chews
+# through `chunk` seeds, each of which reads 41 frames and writes one image pair per bin.
+# Raise these if tasks are being killed at the limit.
+time_limit_simulate = "00:40:00"
+time_limit_render   = "04:00:00"
 
 # Maximum array tasks running at once (the "%N" throttle). Being polite to the shared queue; raising
 # it does not get you through faster when the partition is busy.

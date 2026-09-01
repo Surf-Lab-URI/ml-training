@@ -46,7 +46,9 @@ cp "$PROJ/src/ImageGenFunc.jl" "$OUT_RUN/code/src/"     2>/dev/null || true
 } > "$OUT_RUN/RUN_INFO.txt"
 
 JID=$(sbatch --parsable \
-      --partition="$PART" --time=01:00:00 --array=1-${NTASKS}%100 \
+      --partition="$PART" --time="${PIV_TIME_RENDER:-01:00:00}" \
+      --mem="${PIV_MEM:-8G}" --cpus-per-task="${PIV_CPUS_PER_TASK:-4}" \
+      --array=1-${NTASKS}%${PIV_MAX_CONCURRENT:-100} \
       --output="$OUT_RUN/logs/rr_%A_%a.out" --error="$OUT_RUN/logs/rr_%A_%a.err" \
       --export=ALL,SRC_RUN="$SRC_RUN",OUT_RUN="$OUT_RUN",PROJ="$PROJ",CHUNK="$CHUNK",KPART="$KPART",BASE_SEED=0 \
       "$PROJ/unity/rerender_lab.sbatch")
