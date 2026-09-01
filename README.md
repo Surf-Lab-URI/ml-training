@@ -12,60 +12,69 @@ stop — the number belongs in `params.toml`, and if it isn't there yet, add it 
 
 # Quick start
 
-Everything you need to generate data and look at it. Each step is explained in full in the
-**Detailed guide** below; if a command fails, that is where to look.
+Everything runs from one shared directory — you do not need your own copy of anything except Julia.
+Each step is explained in full in the **Detailed guide** below; if a command fails, look there.
 
-**1. Connect and get the code.**
+**1. Connect and go to the shared checkout.**
 
 ```bash
 ssh <your_unity_username>@unity.rc.umass.edu
-cd /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>
-git clone git@github.com:Surf-Lab-URI/ml-training.git
-cd ml-training && git checkout dataSimulation      # NOT main
+cd /project/pi_nicholas_pizzo_uri_edu/arup/ml-training
 ```
 
-**2. Install Julia** — once, and it has to be your own; home directories are private, so you cannot
-use anyone else's.
+**2. Install Julia** — the only per-person step, because home directories on Unity are private and
+you cannot use anyone else's install. Once, then it is done forever:
 
 ```bash
 curl -fsSL https://install.julialang.org | sh
-echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc && julia --version                # expect 1.12.6
-```
-
-**3. Point at the packages the group already has** — this saves a 10–20 minute install.
-
-```bash
-echo 'export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot' >> ~/.bashrc
+cat >> ~/.bashrc <<'EOF'
+export PATH="$HOME/.juliaup/bin:$PATH"
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+EOF
 source ~/.bashrc
+julia --version                                    # expect 1.12.6
 ```
 
-**4. Make one edit.** Open `params.toml` and set `[run].output_root` to a directory of your own —
-that is where your datasets get written, and it is the only value you must change. Then check it
-resolved:
+The second line points at the group's shared, already-populated package depot, so there is nothing
+to install and no `Pkg.instantiate()` to wait through.
+
+**3. Check the configuration resolves.** Nothing needs editing — `params.toml` already points at
+the shared dataset directory, and each campaign writes its own timestamped folder there, so several
+people can run at once.
 
 ```bash
 julia --project=. scripts/params_export.jl
 ```
 
-**5. Generate a pilot.** Start at 100 simulations, always, whatever you eventually want.
+**4. Generate a pilot.** Start at 100 simulations, always, whatever you eventually want.
 
 ```bash
 ./unity/submit_run.sh 100
 squeue --me                                        # watch it
 ```
 
-**6. Look at what you made.**
+It prints the run folder it created, under
+`/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/`.
+
+**5. Look at what you made.**
 
 ```bash
 module load python/3.11.7
 source /work/pi_nicholas_pizzo_uri_edu/arup_mazumder/piv-venv/bin/activate
-python scripts/make_report.py --root <your_output_root>/run_<stamp>
+python scripts/make_report.py --root /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_<stamp>
 ```
 
-Copy the resulting `report.pdf` to your laptop and open it. If the images have particles in them
-and the displacements look like what you asked for, the pipeline is working and you can scale up
-with `[run].n_sims` and `unity/submit_chunked.sh`.
+Copy the resulting `report.pdf` to your laptop and open it. If the images have particles in them and
+the displacements match what you asked for, the pipeline is working — scale up by setting
+`[run].n_sims` and using `unity/submit_chunked.sh`.
+
+**Want different settings?** Do not edit the shared `params.toml`; everyone reads it. Copy it and
+point at your copy instead — every script honours this:
+
+```bash
+cp params.toml my_params.toml          # already gitignored
+export PIV_PARAMS=$PWD/my_params.toml
+```
 
 ---
 
@@ -105,32 +114,34 @@ ssh <your_unity_username>@unity.rc.umass.edu
 
 ### 2. Get the code
 
-**The code is not in `/project`.** `/project/pi_nicholas_pizzo_uri_edu/arup` holds *datasets*, not
-the repository. Each run folder there does contain a `code/` directory, but that is a four-file
-provenance snapshot of the renderer only — no `Project.toml`, no `2DTurbulence.jl`, no submitters.
-It records what produced that dataset; you cannot run a campaign from it.
-
-The working repository is on `/work`:
+**Use the shared checkout.** It lives in the group's project space, is group-writable, and is what
+`params.toml` already points at:
 
 ```bash
-cd /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>
-git clone git@github.com:Surf-Lab-URI/ml-training.git
-cd ml-training
-git checkout dataSimulation
+cd /project/pi_nicholas_pizzo_uri_edu/arup/ml-training
 ```
 
-**Note the branch.** All of this work lives on `dataSimulation`. `main` is the lab's original
-baseline from April 2026 and does not contain the data-generation pipeline.
+A common misconception: `/project/pi_nicholas_pizzo_uri_edu/arup` also holds the *datasets*, and
+each run folder there contains a `code/` directory — but that is a four-file provenance snapshot of
+the renderer only, with no `Project.toml` and no `2DTurbulence.jl`. It records what produced that
+dataset; you cannot run a campaign from it. The repository above is the runnable copy.
 
-Work under `/work`, **not** your home directory: `$HOME` on Unity is NFS-mounted and is
-occasionally unresolvable at the instant a Slurm task starts. That failure killed 34 of 153 array
-tasks in one re-render, each with a bare `julia: command not found`.
+**The branch is `dataSimulation`.** `main` is the lab's April 2026 baseline and contains none of the
+data-generation pipeline. The shared checkout is already on the right branch; keep it there.
 
-> **You can skip the clone.** The existing checkout at
-> `/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training` is group-readable and
-> group-writable, so you may `cd` there and use it directly. Your own clone is still the better
-> default — a shared checkout means one shared git state and one shared `params.toml` — but if you
-> do share it, do not edit `params.toml`; use a personal copy via `PIV_PARAMS` as described below.
+<details>
+<summary><b>Making your own clone instead</b> — if you intend to modify the code rather than run it</summary>
+
+```bash
+cd /project/pi_nicholas_pizzo_uri_edu/arup      # or anywhere you have space
+git clone git@github.com:Surf-Lab-URI/ml-training.git my-ml-training
+cd my-ml-training && git checkout dataSimulation
+```
+
+Then set `[unity].project_dir` in your own `params.toml` to that path, since the Slurm jobs run
+from whatever it names. Note that `/work` holds only **1 TB for the entire group** while `/project`
+holds 10 TB, so prefer `/project` for anything large.
+</details>
 
 ### 3. Make Julia available
 
@@ -195,30 +206,31 @@ pip install numpy h5py matplotlib pandas pyarrow
 Reactivate it (`module load` + `source`) in each shell where you run the report.
 </details>
 
-### 5. Edit `params.toml`
+### 5. Check `params.toml`
 
-**This is the step everyone forgets.** The file ships with the paths of the account that built the
-original dataset:
+**Nothing needs editing by default.** The shared file already points at the group's dataset
+directory, the shared checkout and the shared Julia depot, and every campaign writes its own
+timestamped folder, so several people can run at once without colliding.
 
-| setting | what to do |
-|---|---|
-| `[run].output_root` | **Change it.** Where datasets get written — needs terabytes, so use the group's `/project` space. Writing into someone else's run directory is the one mistake here that is hard to undo. |
-| `[unity].project_dir` | **Change it** to your own checkout from step 2 — unless you are deliberately using the shared one, in which case leave it. |
-| `[unity].julia_depot` | **Leave it** if you are using the shared depot from step 4. Change it only if you built your own. |
-
-While you are in there, the settings you are most likely to want are near the top:
-`[run].n_sims` (how many simulations), `[run].nt` (frames per simulation),
-`[run].keep_combined` (whether the raw simulations are kept — read the warning), and
-`[bins.v2].medians` (which displacements to render).
-
-Check that everything resolved before submitting anything:
+Confirm what a job will actually use:
 
 ```bash
 julia --project=. scripts/params_export.jl
 ```
 
-That prints the settings the Slurm scripts will actually use. If a path still belongs to someone
-else, fix it now rather than finding out from a failed job three hours later.
+The settings you are most likely to *want* to change are near the top of the file: `[run].n_sims`
+(how many simulations), `[run].nt` (frames per simulation), `[run].keep_combined` (whether the raw
+simulations are kept — read the warning there), and `[bins.v2].medians` (which displacements to
+render). Change them in a personal copy rather than in the shared file — see below.
+
+The three paths at the bottom, under `[unity]`, only need attention if you are working outside this
+group or from your own clone:
+
+| setting | when to change it |
+|---|---|
+| `[run].output_root` | you want datasets somewhere other than the group's shared directory |
+| `[unity].project_dir` | you made your own clone (step 2) |
+| `[unity].julia_depot` | you built your own depot instead of using the shared one |
 
 #### Using your own settings in a shared checkout
 

@@ -65,8 +65,13 @@ nt = 40
 # This is a ONE-WAY DOOR. Default to true unless you are certain, and are short of quota.
 keep_combined = true
 
-# Where datasets are written. Each campaign gets its own timestamped subdirectory underneath.
-# CHANGE THIS to your own project space — the default points at the account that built the dataset.
+# Where datasets are written — the group's shared dataset directory. Every campaign gets its own
+# timestamped subdirectory (run_<YYYY-MM-DD_HH-MM-SS>), so several people can write here at once
+# without colliding and you do not need to change this.
+#
+# It is on /project deliberately: /project holds 10 TB for this group, while /work holds 1 TB for
+# ALL of it. A 10 000-simulation campaign with keep_combined = true is about 9 TB and would not fit
+# on /work at all.
 output_root = "/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset"
 
 
@@ -286,12 +291,16 @@ pix_values = [10, 20, 30]
 # points at the account that built the original dataset and will fail for anyone else. Change all
 # three before your first run.
 
-# Your checkout of this repository, on a filesystem the compute nodes can read.
-project_dir = "/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training"
+# The checkout of this repository the jobs should run from. This is the SHARED group copy — it is
+# group-writable, so everyone can use it and nobody needs their own. Change it only if you made a
+# personal clone.
+project_dir = "/project/pi_nicholas_pizzo_uri_edu/arup/ml-training"
 
-# Julia's package depot. Must NOT be on your home directory: $HOME is NFS-mounted and intermittently
-# unresolvable at task start, which killed 34 of 153 array tasks with "julia: command not found" in
-# the 2026-08-26 re-render before this was moved.
+# Julia's package depot — the SHARED group copy, already populated (4.8 GB). Kept on /work rather
+# than /project because a depot is thousands of small files and /work is the faster tier.
+# It must NOT live on your home directory: $HOME is NFS-mounted and intermittently unresolvable at
+# task start, which killed 34 of 153 array tasks with "julia: command not found" in the 2026-08-26
+# re-render before this was moved.
 julia_depot = "/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot"
 
 # Slurm partition. "uri-cpu" is the group's allocation; "cpu-preempt" is free but your jobs can be
