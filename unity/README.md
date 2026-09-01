@@ -1,92 +1,59 @@
-# Generating the dataset on Unity (SLURM)
+# Slurm job scripts
 
-Scales the local pilot up to a large dataset by running many independent
-simulations in parallel as a **SLURM array job** — one array task per simulation,
-one simulation per independent flow ("sample"), per the one-sim-one-flow design
-(`notes/DATA_GENERATION_DESIGN.md` §1–2).
+**How to run a campaign is in the top-level [`README.md`](../README.md); every setting is in
+[`params.toml`](../params.toml).** This file only covers what is in this directory and how to watch
+a running job.
 
-The whole campaign is reproducible from one number: **`seed = BASE_SEED + array-index`**.
-Currently configured for **100 sims** (`--array=1-100%50`, seeds 1–100, `nt=40`).
+## What is here
 
----
+You run the `submit_*.sh` drivers. They read `params.toml`, create a timestamped run folder,
+snapshot the code, write `RUN_INFO.txt`, and launch the matching `.sbatch` array — you never call
+an `.sbatch` directly.
 
-## Parallel-safe output (done)
+| script | what it does |
+|---|---|
+| `submit_run.sh` | one simulation campaign, single array → `run_array.sbatch` |
+| `submit_chunked.sh` | the same, in chunks, for campaigns above the ~2000-job queue limit |
+| `submit_rerender.sh` | re-render an existing campaign with the v1 bins → `rerender_lab.sbatch` |
+| `submit_v2.sh` | re-render with the v2 median bins → `rerender_v2.sbatch` |
+| `finalize_run.sbatch` | runs after a campaign: builds `manifest.parquet` and a preview |
+| `archive_run.sbatch` | packs a finished run for long-term storage |
 
-Each task sets `PIV_OUT_DIR` to its own node-local scratch dir, and
-`2DTurbulence.jl` / `ImageGen.jl` now honor it (writing under
-`$PIV_OUT_DIR/data/{binary,visual}`). So parallel tasks never collide — no
-serial throttle or per-task checkout needed.
+**Superseded, kept only for reference:** `generate_dataset.sbatch` and `run100.sbatch`. No submitter
+calls them and they predate `params.toml`, so their hardcoded array sizes, seeds and paths are not
+what a run will use. Do not start from them.
 
-At the end of each task the sbatch copies the **durable** artifacts into a shared
-`dataset/` dir and deletes the scratch:
-- **image-pair samples** (`pixN/`) — what you train on (~14 MB/sim)
-- **metadata sidecar** (`metadata/`) — the seed + params, so any sim is regenerable (~1.3 KB/sim)
-
-The **raw simulation is discarded** (it's ~13× larger and reconstructible from the
-seed — see notes §4). If you expect to re-render later (new displacement bins,
-different particle density), uncomment the "keep the combined raw file" block in
-the sbatch to retain `_combined.jld2` (~90 MB/sim).
-
----
-
-## One-time setup on Unity
+## Monitoring
 
 ```bash
-git clone git@github.com:Surf-Lab-URI/ml-training.git ~/ml-training
-cd ~/ml-training
-git checkout dataSimulation
-mkdir -p logs dataset
-module load julia                      # use the exact module name available on Unity
-julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+squeue --me                                            # what is queued and running
+tail -f <RUN_DIR>/logs/*_1.out                         # the first array task's output
+sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS   # per-task accounting after the fact
+scancel <jobid>                                        # stop a campaign
 ```
 
-## Edit before submitting
+Each task writes to node-local scratch (`PIV_OUT_DIR`) and copies the durable artifacts into the
+run folder at the end, so parallel tasks never collide.
 
-Open `unity/generate_dataset.sbatch` and set the lines marked `TODO`:
-- `--array` size and throttle (currently `1-100%50`)
-- `--time`, `--mem`, `--partition`, and `--account` (if your allocation needs it)
-- `PROJ` (repo path), `BASE_SEED` (currently 0 → seeds 1..100), `NT` (currently 40)
-- the `module load julia` version
+## Sizing
 
-## Submit / monitor
+Measured on CPU at `nt = 40`:
 
-```bash
-sbatch unity/generate_dataset.sbatch
-squeue --me                            # watch the array
-sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS   # per-task accounting
-```
+- **~3–4 minutes per simulation** (Julia startup plus roughly 3 minutes of physics).
+- **~14 MB per simulation** of image pairs and metadata — the part you train on.
+- **~900 MB per simulation** for the raw `combined/` file, if `[run].keep_combined = true`.
+  That is the default and it is what makes re-rendering possible; at 10 000 simulations it is
+  about 9 TB, so check your quota before a large campaign. Setting it false is irreversible for
+  that campaign.
+- GPU is faster per simulation but usually loses to CPU concurrency for many short jobs.
 
-## Output
+## Notes
 
-```
-dataset/pix10/seed7_<tag>_pix10.jld2     # image pair A,B (uint8) + labels uA,vA,uB,vB (Float32)
-dataset/pix20/seed7_<tag>_pix20.jld2
-dataset/pix30/seed7_<tag>_pix30.jld2
-dataset/metadata/seed7_metadata_<tag>.toml
-```
-
-One image pair per sim per bin. Velocity-field **labels** live inside the pair
-files. **Note (BUG-13):** the `pixN` folder names are nominal targets, not exact
-displacements — by construction `smax≈5 px`, so actual displacements quantize to
-~`{5, 15, 25}` and are inconsistent across sims. The velocity-field labels are
-exact regardless; use them, not the folder names, as ground truth. See `bugs.md`.
-
----
-
-## Sizing notes (from the local pilot)
-
-- ~3–4 min wall per sim on CPU at `nt=40` (Julia startup + ~3 min physics).
-- 100 sims as an array with 50 concurrent ≈ a few minutes of wall time (queue permitting).
-- Storage: `dataset/` ≈ **14 MB/sim** → ~1.4 GB for 100 (raw, if kept, would be ~18 GB).
-- GPU per task is faster per sim but usually wins less for many short jobs than CPU
-  concurrency — see the GPU variant block at the bottom of the sbatch.
-
-## Still to do (tracked separately)
-
-- [x] `PIV_OUT_DIR` output-root support in `2DTurbulence.jl` / `ImageGen.jl`.
-- [x] Per-sample metadata sidecar (`notes/DATA_GENERATION_DESIGN.md` §6) — in-sim portion.
-- [x] One image pair per sim (`ImageGen.jl`).
-- [ ] `--pix` as a CLI list (currently `[10,20,30]` hard-coded in `ImageGen.jl`).
-- [ ] `--n_particles` / density as a CLI arg (`notes/DATA_GENERATION_DESIGN.md` §8).
-- [ ] ImageGen-side metadata (§6-E pix/dp/smax, §6-F rendered ppp) folded into the sidecar.
-</content>
+- The whole campaign is reproducible from one number: **`seed = base_seed + array index`**.
+- Do not put your Julia depot on `$HOME`. It is NFS-mounted and intermittently unresolvable at task
+  start, which killed 34 of 153 tasks in the 2026-08-26 re-render. Set `[unity].julia_depot` to a
+  path on `/work`; the job scripts also retry five times before giving up.
+- **v1 (`pixN`) bin names are nominal, not exact** — displacements quantise to multiples of
+  `smax ≈ 5 px`, so `pix10/20/30` deliver roughly 5/15/25 px and vary between simulations. This is
+  BUG-13, fixed in the v2 generator. The velocity-field labels inside each pair file are exact
+  either way: use them, never the folder name, as ground truth. See `../bugs.md`.

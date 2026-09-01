@@ -222,6 +222,13 @@
 ---
 
 ### BUG-14 — No sub-frame interpolation; small-`pix` bins fundamentally limited by `dt`
+> **FIXED 2026-08-13 in `datagen_v2/FracFrame.jl`** (commit `fc211e7`; velocity fields followed in
+> `4277a0a`). Particle positions are interpolated between saved frames to synthesise a virtual
+> frame at any time, so the frame gap is continuous rather than an integer. Self-test: cubic
+> interpolation error 0.00005 px against exact analytic trajectories, periodic seam handled, all
+> eight bins hit their target median in two solver iterations. Confirmed on the delivered dataset —
+> every v2 bin's measured median matches its name to ~0.1 px. See
+> `datagen_v2/DATA_REQUIREMENTS.md` R2 and §4b.
 - **File:** `scripts/ImageGen.jl` (the pair-construction loop), `src/ImageGenFunc.jl`
 - **Severity:** 🟡 Medium — design limitation, not a code defect
 - **Crashes?** No
@@ -250,6 +257,13 @@
 ---
 
 ### BUG-13 — `dp` floor at 1 silently mislabels low-`pix` bins
+> **FIXED 2026-08-13 in `datagen_v2/ImageGenV2.jl`** (commit `fc211e7`), together with
+> [[BUG-14]], whose fix this depended on. The v2 generator solves for a *fractional* frame index,
+> so any target displacement is reachable, and it bins by **median** rather than by a nominal
+> maximum. A sample whose achievable median misses its target by more than `[bins.v2].tolerance`
+> is **skipped rather than written under a label it does not have** — the failure mode below is
+> now impossible by construction. `scripts/ImageGen.jl` is unfixed and is kept only to reproduce
+> the 2026-06/07 datasets; it still emits the warning quoted below.
 - **File:** `scripts/ImageGen.jl` (line ~47)
 - **Severity:** 🟡 Medium — produces mislabeled training data
 - **Crashes?** No — silently produces wrong data
@@ -395,8 +409,8 @@
 | BUG-10 | `ImageGen.jl` ignores `-f`, only uses `input_dir` | `ImageGen.jl` | 🟢 FIXED |
 | BUG-11 | Child Julia processes launched without `--project` | `2DTurbulence.jl` | 🟢 FIXED |
 | BUG-12 | Combined-file naming mismatch between writer and consumer | `2DTurbulence.jl` | 🟢 FIXED |
-| BUG-13 | `dp` floor at 1 silently mislabels low-`pix` bins | `ImageGen.jl` | 🔴 PENDING |
-| BUG-14 | No sub-frame interpolation; small-pix bins limited by `dt` | `ImageGen.jl` | 🔴 PENDING |
+| BUG-13 | `dp` floor at 1 silently mislabels low-`pix` bins | `ImageGen.jl` | 🟢 FIXED in `datagen_v2/` |
+| BUG-14 | No sub-frame interpolation; small-pix bins limited by `dt` | `ImageGen.jl` | 🟢 FIXED in `datagen_v2/` |
 | BUG-15 | Particle render xlim/ylim mismatch (2π vs 512) → teleport | `ImageGen.jl` | 🟢 FIXED |
 
 
