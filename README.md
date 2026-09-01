@@ -10,6 +10,67 @@ stop — the number belongs in `params.toml`, and if it isn't there yet, add it 
 
 ---
 
+# Quick start
+
+Everything you need to generate data and look at it. Each step is explained in full in the
+**Detailed guide** below; if a command fails, that is where to look.
+
+**1. Connect and get the code.**
+
+```bash
+ssh <your_unity_username>@unity.rc.umass.edu
+cd /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>
+git clone git@github.com:Surf-Lab-URI/ml-training.git
+cd ml-training && git checkout dataSimulation      # NOT main
+```
+
+**2. Install Julia** — once, and it has to be your own; home directories are private, so you cannot
+use anyone else's.
+
+```bash
+curl -fsSL https://install.julialang.org | sh
+echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc && julia --version                # expect 1.12.6
+```
+
+**3. Point at the packages the group already has** — this saves a 10–20 minute install.
+
+```bash
+echo 'export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**4. Make one edit.** Open `params.toml` and set `[run].output_root` to a directory of your own —
+that is where your datasets get written, and it is the only value you must change. Then check it
+resolved:
+
+```bash
+julia --project=. scripts/params_export.jl
+```
+
+**5. Generate a pilot.** Start at 100 simulations, always, whatever you eventually want.
+
+```bash
+./unity/submit_run.sh 100
+squeue --me                                        # watch it
+```
+
+**6. Look at what you made.**
+
+```bash
+module load python/3.11.7
+source /work/pi_nicholas_pizzo_uri_edu/arup_mazumder/piv-venv/bin/activate
+python scripts/make_report.py --root <your_output_root>/run_<stamp>
+```
+
+Copy the resulting `report.pdf` to your laptop and open it. If the images have particles in them
+and the displacements look like what you asked for, the pipeline is working and you can scale up
+with `[run].n_sims` and `unity/submit_chunked.sh`.
+
+---
+
+# Detailed guide
+
 ## How it works
 
 ```
@@ -32,17 +93,17 @@ Use `datagen_v2/` for anything new.
 
 ---
 
-# Running it on Unity — step by step
+## Running it on Unity, in full
 
 Follow these in order. Steps 1–5 are once per person; steps 6 onward are how you generate data.
 
-## 1. Connect
+### 1. Connect
 
 ```bash
 ssh <your_unity_username>@unity.rc.umass.edu
 ```
 
-## 2. Get the code
+### 2. Get the code
 
 **The code is not in `/project`.** `/project/pi_nicholas_pizzo_uri_edu/arup` holds *datasets*, not
 the repository. Each run folder there does contain a `code/` directory, but that is a four-file
@@ -71,7 +132,7 @@ tasks in one re-render, each with a bare `julia: command not found`.
 > default — a shared checkout means one shared git state and one shared `params.toml` — but if you
 > do share it, do not edit `params.toml`; use a personal copy via `PIV_PARAMS` as described below.
 
-## 3. Make Julia available
+### 3. Make Julia available
 
 **This step cannot be shared, even inside the group.** Home directories on Unity are `drwx------`,
 so nobody can reach anyone else's `~/.juliaup` regardless of its own permissions. Every person
@@ -98,7 +159,7 @@ julia --version        # julia version 1.12.6
 > Do **not** use `module load julia` — the module tree only offers 1.10.5, which does not match the
 > manifest.
 
-## 4. Get the packages
+### 4. Get the packages
 
 **Group members can skip the install entirely.** A populated 4.8 GB Julia depot and a Python
 environment already exist on `/work` and are group-readable, so point at them and move on:
@@ -134,7 +195,7 @@ pip install numpy h5py matplotlib pandas pyarrow
 Reactivate it (`module load` + `source`) in each shell where you run the report.
 </details>
 
-## 5. Edit `params.toml`
+### 5. Edit `params.toml`
 
 **This is the step everyone forgets.** The file ships with the paths of the account that built the
 original dataset:
@@ -159,7 +220,7 @@ julia --project=. scripts/params_export.jl
 That prints the settings the Slurm scripts will actually use. If a path still belongs to someone
 else, fix it now rather than finding out from a failed job three hours later.
 
-### Using your own settings in a shared checkout
+#### Using your own settings in a shared checkout
 
 The group's convention on Unity is **one directory per person** under
 `/work/pi_nicholas_pizzo_uri_edu/` — there is already an `Andrew_Goering`, an `arup_mazumder` and a
@@ -180,7 +241,7 @@ The generators, `params_export.jl` and the Slurm submitters all read `PIV_PARAMS
 and fall back to `params.toml` otherwise, so a personal copy works everywhere with no change to any
 command. In your own checkout you can ignore this and just edit `params.toml`.
 
-## 6. Run a pilot — always
+### 6. Run a pilot — always
 
 A hundred simulations take a few minutes and catch every configuration mistake that a hundred
 thousand would catch three days later.
@@ -196,7 +257,7 @@ This creates a timestamped folder under `[run].output_root`, snapshots the code 
 squeue --me
 ```
 
-## 7. Look at what came out
+### 7. Look at what came out
 
 ```bash
 python scripts/make_report.py --root /project/.../run_<stamp>
@@ -206,7 +267,7 @@ Copy `report.pdf` to your laptop and open it. **Check three things before going 
 the particle images actually have particles in them; the displacement magnitudes are in the range
 you asked for; and the flow-field arrows point somewhere sensible.
 
-## 8. Run the full campaign
+### 8. Run the full campaign
 
 Set `[run].n_sims` in `params.toml` to the size you want, then:
 
@@ -229,7 +290,7 @@ per simulation when `keep_combined = true` — about **9 TB for 10 000 simulatio
 have that, set `keep_combined = false`, but read the warning in `params.toml` first: it cannot be
 undone.
 
-## 9. Re-render instead, when you can
+### 9. Re-render instead, when you can
 
 If a campaign was run with `keep_combined = true`, you can build a completely new dataset from it
 in minutes — different displacement bins, different image appearance — with no new physics:
