@@ -66,7 +66,9 @@ It prints the run folder it created, under
 ```bash
 module load python/3.11.7
 source /work/pi_nicholas_pizzo_uri_edu/arup_mazumder/piv-venv/bin/activate
-RUN=/project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_2026-09-01_21-12-58   # yours
+# your most recent run, resolved automatically
+RUN=$(ls -dt /project/pi_nicholas_pizzo_uri_edu/arup/piv_2dturb_dataset/run_* | head -1)
+echo "$RUN"
 python scripts/make_report.py --root "$RUN"
 ```
 
