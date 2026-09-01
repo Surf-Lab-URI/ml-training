@@ -128,6 +128,27 @@ Measured within-bin shape (pooled over 60 samples), where *M* is the bin median:
 with **max/median = 1.67**, near-constant across a 5x range of displacement (1.71 -> 1.68 -> 1.66,
 measured within the same sims at dp = 2, 4, 6), so it extrapolates safely.
 
+> **Re-measured on the delivered v2 data, 2026-09-01** (`run_v2_2026-08-14_05-26-22`, 40 samples per
+> bin, all eight bins). The near-constancy claim is **confirmed exactly** — the per-sample ratio is
+> identical to two decimals in every bin (mean 1.89, sd 0.33, median 1.78, worst 3.03). That is
+> structural rather than lucky: within one simulation every bin shares frame A and the same particle
+> subset, so a bin's displacement field is the same velocity field scaled by its time gap, and
+> scaling leaves max/median unchanged.
+>
+> **The value, however, is 1.78 (typical sample) to 1.89 (mean), not 1.67** — about 12% higher. The
+> 1.67 was measured on the older v1 data. Two consequences for the numbers below:
+>
+> - The bin set does not span "max ~ 5 -> 50 px". A typical `med30` sample reaches **53 px**, the
+>   average sample **57 px**, and the widest of 40 samples **91 px**; pooled, the bin's maximum is
+>   **91.5 px**. Coverage at the high end is therefore *better* than this section claims.
+> - That is not automatically good news. `med30` contains displacements roughly twice the intended
+>   maximum, which makes it a harder learning problem than budgeted for — a candidate explanation
+>   for why the wide-range v2 model underfit (train loss 0.502 vs 0.224, plateaued at epoch 33)
+>   rather than simply needing more epochs. Untested; see the group report's §5.
+>
+> Reproduce: the per-bin median/p90/p99/max table on any run is printed by
+> `ml-training/scripts/make_report.py --root <RUN_DIR>`.
+
 Pooled coverage of the candidate bin sets, and the ceiling each implies under the
 *mass-falls-below-3.4%* rule calibrated on the current dataset:
 
