@@ -44,9 +44,12 @@ ssh <your_unity_username>@unity.rc.umass.edu
 
 ## 2. Get the code
 
-Work under `/work`, **not** your home directory: `$HOME` on Unity is NFS-mounted and is
-occasionally unresolvable at the instant a Slurm task starts. That failure killed 34 of 153 array
-tasks in one re-render, each with a bare `julia: command not found`.
+**The code is not in `/project`.** `/project/pi_nicholas_pizzo_uri_edu/arup` holds *datasets*, not
+the repository. Each run folder there does contain a `code/` directory, but that is a four-file
+provenance snapshot of the renderer only — no `Project.toml`, no `2DTurbulence.jl`, no submitters.
+It records what produced that dataset; you cannot run a campaign from it.
+
+The working repository is on `/work`:
 
 ```bash
 cd /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>
@@ -58,10 +61,23 @@ git checkout dataSimulation
 **Note the branch.** All of this work lives on `dataSimulation`. `main` is the lab's original
 baseline from April 2026 and does not contain the data-generation pipeline.
 
+Work under `/work`, **not** your home directory: `$HOME` on Unity is NFS-mounted and is
+occasionally unresolvable at the instant a Slurm task starts. That failure killed 34 of 153 array
+tasks in one re-render, each with a bare `julia: command not found`.
+
+> **You can skip the clone.** The existing checkout at
+> `/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/ml-training` is group-readable and
+> group-writable, so you may `cd` there and use it directly. Your own clone is still the better
+> default — a shared checkout means one shared git state and one shared `params.toml` — but if you
+> do share it, do not edit `params.toml`; use a personal copy via `PIV_PARAMS` as described below.
+
 ## 3. Make Julia available
 
-Julia is **not on your PATH by default** on Unity. Install
-[juliaup](https://julialang.org/downloads/) into your home directory once:
+**This step cannot be shared, even inside the group.** Home directories on Unity are `drwx------`,
+so nobody can reach anyone else's `~/.juliaup` regardless of its own permissions. Every person
+needs their own Julia.
+
+Install [juliaup](https://julialang.org/downloads/) once:
 
 ```bash
 curl -fsSL https://install.julialang.org | sh
@@ -82,19 +98,31 @@ julia --version        # julia version 1.12.6
 > Do **not** use `module load julia` — the module tree only offers 1.10.5, which does not match the
 > manifest.
 
-## 4. Install the packages
+## 4. Get the packages
 
-Point Julia's package depot at `/work` (again, not `$HOME`), then install:
+**Group members can skip the install entirely.** A populated 4.8 GB Julia depot and a Python
+environment already exist on `/work` and are group-readable, so point at them and move on:
+
+```bash
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+module load python/3.11.7
+source /work/pi_nicholas_pizzo_uri_edu/arup_mazumder/piv-venv/bin/activate
+```
+
+Put the `export` in your `~/.bashrc`; the other two are needed only in a shell where you want to
+run the report. If two people instantiate into the shared depot at the same time they can race, so
+if you ever do need to add a package, do it when nobody else is mid-install.
+
+<details>
+<summary><b>Installing from scratch instead</b> — for a new allocation, or outside this group</summary>
 
 ```bash
 export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/julia_depot
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
+julia --project=. -e 'using Pkg; Pkg.instantiate()'      # 10-20 minutes
 ```
 
-Put that `export` in your `~/.bashrc` too. Instantiating takes 10–20 minutes the first time.
-
-For the report script (step 7) you also need Python. **Unity blocks `pip install --user`** (PEP 668,
-"externally-managed-environment"), so make a virtual environment — once:
+For Python, **Unity blocks `pip install --user`** (PEP 668, "externally-managed-environment"), so
+build a virtual environment:
 
 ```bash
 module load python/3.11.7
@@ -103,23 +131,19 @@ source /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv/bin/activa
 pip install numpy h5py matplotlib pandas pyarrow
 ```
 
-Every time you want to run the report, load the module and activate the environment again:
-
-```bash
-module load python/3.11.7
-source /work/pi_nicholas_pizzo_uri_edu/<your_unity_username>/piv-venv/bin/activate
-```
+Reactivate it (`module load` + `source`) in each shell where you run the report.
+</details>
 
 ## 5. Edit `params.toml`
 
 **This is the step everyone forgets.** The file ships with the paths of the account that built the
-original dataset, and all three will fail for you. Open it and change:
+original dataset:
 
-| setting | point it at |
+| setting | what to do |
 |---|---|
-| `[run].output_root` | where datasets get written — needs terabytes, use the group's `/project` space |
-| `[unity].project_dir` | your checkout from step 2 |
-| `[unity].julia_depot` | the depot from step 4 |
+| `[run].output_root` | **Change it.** Where datasets get written — needs terabytes, so use the group's `/project` space. Writing into someone else's run directory is the one mistake here that is hard to undo. |
+| `[unity].project_dir` | **Change it** to your own checkout from step 2 — unless you are deliberately using the shared one, in which case leave it. |
+| `[unity].julia_depot` | **Leave it** if you are using the shared depot from step 4. Change it only if you built your own. |
 
 While you are in there, the settings you are most likely to want are near the top:
 `[run].n_sims` (how many simulations), `[run].nt` (frames per simulation),
@@ -135,31 +159,16 @@ julia --project=. scripts/params_export.jl
 That prints the settings the Slurm scripts will actually use. If a path still belongs to someone
 else, fix it now rather than finding out from a failed job three hours later.
 
-### Sharing with the rest of the group
+### Using your own settings in a shared checkout
 
-**The group's convention on Unity is one directory per person**, directly under
-`/work/pi_nicholas_pizzo_uri_edu/` — there is already an `Andrew_Goering`, an `arup_mazumder` and
-a `Xiaoyi_Zhao`. Make your own and clone into it, as in step 2. That is the recommended setup and
-the rest of this section is only for people who want to share more than that.
+The group's convention on Unity is **one directory per person** under
+`/work/pi_nicholas_pizzo_uri_edu/` — there is already an `Andrew_Goering`, an `arup_mazumder` and a
+`Xiaoyi_Zhao`. Your own directory and your own clone is the simplest setup, and steps 2–4 above say
+what can be shared if you would rather not duplicate the 4.8 GB depot.
 
-What is unavoidably per-person:
-
-- **Your PATH.** juliaup installs into your own home directory, so step 3 is per-person no matter
-  what else you share.
-
-What can be shared, if you want to save time and disk:
-
-- **The Julia depot** (step 4) can point at one directory the whole group uses, which saves each
-  person the 10–20 minute instantiate and a few GB. Have **one person run `Pkg.instantiate()`
-  first and let it finish** before anyone else uses it — two people precompiling into the same
-  depot at the same time can race. If in doubt, use your own; disk is cheaper than a confusing
-  failure.
-- **The Python virtual environment** (step 4) can be shared read-only. One person creates it,
-  everyone else just activates it.
-
-**If you share a single checkout, do not edit its `params.toml`.** It is a tracked file, so edits
-show up as local changes for everyone and collide the moment two people want different settings.
-Instead, copy it and point at your copy:
+If you do share a checkout, **do not edit its `params.toml`** — it is a tracked file, so your edits
+become everyone's local changes and collide the moment two people want different settings. Keep a
+personal copy instead:
 
 ```bash
 cp params.toml my_params.toml          # already gitignored
@@ -167,9 +176,9 @@ cp params.toml my_params.toml          # already gitignored
 export PIV_PARAMS=$PWD/my_params.toml
 ```
 
-Everything — the generators, `params_export.jl`, and the Slurm submitters — reads `PIV_PARAMS` if
-it is set and falls back to `params.toml` otherwise, so a personal copy works everywhere without
-changing any command. In your own checkout you can ignore all this and just edit `params.toml`.
+The generators, `params_export.jl` and the Slurm submitters all read `PIV_PARAMS` when it is set
+and fall back to `params.toml` otherwise, so a personal copy works everywhere with no change to any
+command. In your own checkout you can ignore this and just edit `params.toml`.
 
 ## 6. Run a pilot — always
 
