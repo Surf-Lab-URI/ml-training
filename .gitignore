@@ -23,3 +23,9 @@ report.pdf
 report.md
 *_figs/
 
+# Personal parameter files, selected with PIV_PARAMS. params.toml itself IS tracked — it holds the
+# defaults; these are one person's overrides and should not follow the repo around.
+my_params.toml
+*_params.toml
+logs/
+

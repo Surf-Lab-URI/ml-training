@@ -135,6 +135,42 @@ julia --project=. scripts/params_export.jl
 That prints the settings the Slurm scripts will actually use. If a path still belongs to someone
 else, fix it now rather than finding out from a failed job three hours later.
 
+### Sharing with the rest of the group
+
+**The group's convention on Unity is one directory per person**, directly under
+`/work/pi_nicholas_pizzo_uri_edu/` — there is already an `Andrew_Goering`, an `arup_mazumder` and
+a `Xiaoyi_Zhao`. Make your own and clone into it, as in step 2. That is the recommended setup and
+the rest of this section is only for people who want to share more than that.
+
+What is unavoidably per-person:
+
+- **Your PATH.** juliaup installs into your own home directory, so step 3 is per-person no matter
+  what else you share.
+
+What can be shared, if you want to save time and disk:
+
+- **The Julia depot** (step 4) can point at one directory the whole group uses, which saves each
+  person the 10–20 minute instantiate and a few GB. Have **one person run `Pkg.instantiate()`
+  first and let it finish** before anyone else uses it — two people precompiling into the same
+  depot at the same time can race. If in doubt, use your own; disk is cheaper than a confusing
+  failure.
+- **The Python virtual environment** (step 4) can be shared read-only. One person creates it,
+  everyone else just activates it.
+
+**If you share a single checkout, do not edit its `params.toml`.** It is a tracked file, so edits
+show up as local changes for everyone and collide the moment two people want different settings.
+Instead, copy it and point at your copy:
+
+```bash
+cp params.toml my_params.toml          # already gitignored
+# edit my_params.toml
+export PIV_PARAMS=$PWD/my_params.toml
+```
+
+Everything — the generators, `params_export.jl`, and the Slurm submitters — reads `PIV_PARAMS` if
+it is set and falls back to `params.toml` otherwise, so a personal copy works everywhere without
+changing any command. In your own checkout you can ignore all this and just edit `params.toml`.
+
 ## 6. Run a pilot — always
 
 A hundred simulations take a few minutes and catch every configuration mistake that a hundred
