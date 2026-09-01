@@ -497,6 +497,7 @@ Further reading, in the order it is usually needed:
 
 | file | what it holds |
 |---|---|
+| `notes/DATA_GENERATION_REFERENCE.md` | **everything known about the data**: what exists, the physics, measured bin statistics, design decisions, known gaps |
 | `datagen_v2/DATA_REQUIREMENTS.md` | why the v2 bins are what they are, measured against the lab data |
 | `notes/DATA_GENERATION_DESIGN.md` | the one-sample-per-simulation decision and the decorrelation measurement |
 | `notes/RUNBOOK.md` | operational notes from the original campaigns |
