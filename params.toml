@@ -172,6 +172,23 @@ height = 512
 xlim = [0.0, 512.0]
 ylim = [0.0, 512.0]
 
+# --- Appearing / disappearing particles ---------------------------------------------------------
+# Fraction of particles hidden in EACH frame, drawn uniformly per image pair from this range.
+#
+# Real particles enter and leave the laser sheet between frames, so a tracer visible in A is often
+# absent from B. The measured cost is steep: the model's top-2 mm error climbs sharply with the
+# hidden fraction, and it is the stress case it handles worst. Training data with no dropout at all
+# never teaches it to cope.
+#
+# The two masks are drawn INDEPENDENTLY, so both frames keep expected density (1-p) and the
+# fraction of particles present in both is (1-p)^2 -- 81% at p=0.1, 25% at p=0.5. Disjoint sets
+# would force zero overlap above p=0.5, leaving nothing to track.
+#
+# Drawn per pair rather than split into separate bins on purpose: bins from one simulation share a
+# flow field, so a dropout bin set would multiply storage without adding independent flows. This
+# gives continuous coverage for free. Set to [0.0, 0.0] to disable.
+dropout_range = [0.0, 0.5]
+
 # Also write a PNG next to each .jld2? Useful for eyeballing a small run, far too slow and
 # far too much disk for a real campaign. Use scripts/make_report.py instead.
 save_pngs = false

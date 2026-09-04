@@ -150,7 +150,12 @@ for infile in infiles
             jldopen(out_file, "a+") do fout
                 c = get(counters, bin, 0) + 1
                 bg, pk, sp, nσ = appearance_draw(rng)   # params.toml [imaging.appearance]
-                make_image_pair(fout, xA, yA, xB, yB, uA, vA, uB, vB, c;
+                # Appearing/disappearing particles, params.toml [imaging].dropout_range. The
+                # LABEL fields are dense and unaffected -- only which tracers are drawn changes.
+                pdrop = dropout_draw(rng)
+                kA, kB = keep_masks(rng, length(xA), pdrop)
+                meta["$(bin)_dropout"] = pdrop
+                make_image_pair(fout, xA[kA], yA[kA], xB[kB], yB[kB], uA, vA, uB, vB, c;
                                 width = img_width, height = img_height,
                                 xlim = img_xlim, ylim = img_ylim,           # BUG-15
                                 σₚ = sp, Δt_pair = Δt_pair,

@@ -101,6 +101,31 @@ function appearance_draw(rng)
     end
 end
 
+"""
+    dropout_draw(rng) -> p
+
+Fraction of particles to hide in each frame for one image pair, uniform on
+params.toml [imaging].dropout_range. Returns 0.0 when the range is [0, 0].
+"""
+function dropout_draw(rng)
+    r = Params.get_vector("imaging.dropout_range", [0.0, 0.0])
+    lo, hi = r[1], length(r) > 1 ? r[2] : r[1]
+    hi <= lo && return lo
+    return lo + (hi - lo) * rand(rng)
+end
+
+"""
+    keep_masks(rng, n, p) -> (keepA, keepB)
+
+Independent Bernoulli keep-masks, so each frame retains expected density (1-p) and the particles
+present in BOTH are (1-p)^2. Independent rather than disjoint: disjoint sets force zero overlap
+above p = 0.5, which leaves nothing to track at all.
+"""
+function keep_masks(rng, n, p)
+    p <= 0 && return (trues(n), trues(n))
+    return (rand(rng, n) .>= p, rand(rng, n) .>= p)
+end
+
 # Rendered image geometry. Must match the simulation grid — particles carry grid coordinates
 # straight into image space, so a mismatch renders them off-frame (this was BUG-15).
 img_width  = Params.get("imaging.width", 512)
