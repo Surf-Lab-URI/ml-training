@@ -287,6 +287,36 @@ write_out_of_tolerance = false
 
 
 ####################################################################################################
+[bins.v3]
+####################################################################################################
+# THE CURRENT DESIGN. v3 keeps the simulation's turbulence but imposes the tank's measured
+# near-surface shear layer, a wavy free surface, and an air region -- see DATA_REQUIREMENTS R6.
+#
+# Bins are indexed by the median displacement in the TOP 2 mm, not the whole frame. With a shear
+# layer the whole-frame median is not a meaningful label: the tank's is 0.38 px while its top-2 mm
+# median is 7.88 px, a 21x difference. The top 2 mm is also the region we actually care about.
+#
+# The tank's top-2 mm median measures 7.88 px averaged over 60 frames, ranging 0.97-22.03 between
+# frames. This set brackets that range rather than extrapolating past it -- v2 reached ~91 px
+# against a tank maximum of 24 px, and it cost accuracy everywhere.
+surface_medians = [2, 4, 6, 9, 12, 16, 20, 24]
+
+# Relative tolerance on the achieved top-2 mm median. The median is linear in the scale factor, so
+# this is hit in one step rather than by iteration.
+tolerance = 0.05
+
+# Fraction of the frame above the water. Measured at 18.1% and remarkably stable frame to frame
+# (17.9-18.3% over 60 frames).
+air_fraction = 0.181
+
+# Pixel scale of the laboratory images, used to convert image rows to depth in mm.
+dx_mm = 0.0565454946380008
+
+# WARNING for whoever trains on this: the sheared field is NOT divergence-free, because the profile
+# is imposed kinematically rather than solved for. Set lambda_div to 0 (or something very small) or
+# the divergence penalty will fight the shear it is supposed to learn.
+
+####################################################################################################
 [bins.v1]
 ####################################################################################################
 # LEGACY — the original generator, scripts/ImageGen.jl. Kept so the 2026-06/07 datasets can be
