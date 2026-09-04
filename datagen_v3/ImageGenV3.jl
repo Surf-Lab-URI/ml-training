@@ -190,7 +190,9 @@ for infile in infiles
                                 width = img_width, height = img_height,
                                 xlim = img_xlim, ylim = img_ylim,
                                 σₚ = sp, Δt_pair = 1.0,
-                                background = bg, peak = pk, noise_σ = nσ, rng = rng)
+                                background = bg, peak = pk, noise_σ = nσ,
+                                air_surface = surf,   # air masked to exactly 0, as the lab is
+                                rng = rng)
                 counters[bin] = c
             end
             nwritten += 1

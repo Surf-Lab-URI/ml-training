@@ -351,12 +351,28 @@ function make_image_pair(jldfile, xA, yA, xB, yB, uA, vA, uB, vB, pair_index;
         background = 0.0,     # lab appearance: gray background level (0.0 = original black)
         peak = 1.0,           # particle peak intensity above bg (controls contrast)
         noise_σ = 0.0,        # sensor/background noise std (0.0 = original clean)
+        # Rows above the free surface, per column, or nothing for no surface (v1/v2 behaviour).
+        # The lab masks its air region to EXACTLY zero -- no background, no noise -- so a model
+        # trained on images whose air carries background + noise meets a different cue on the tank
+        # and could learn "bright = water" from the wrong thing.
+        air_surface = nothing,
         rng = Random.GLOBAL_RNG)
 
     imgA = render_particles(xA, yA; width, height, xlim, ylim, σₚ, background, peak)
     imgB = render_particles(xB, yB; width, height, xlim, ylim, σₚ, background, peak)
     add_noise!(imgA, noise_σ, rng)     # independent noise realization per frame
     add_noise!(imgB, noise_σ, rng)
+    if air_surface !== nothing
+        # after the noise, so the air is exactly zero rather than zero-plus-noise
+        @inbounds for j in 1:size(imgA, 2)
+            sj = air_surface[min(j, length(air_surface))]
+            for i in 1:size(imgA, 1)
+                if i < sj
+                    imgA[i, j] = 0f0; imgB[i, j] = 0f0
+                end
+            end
+        end
+    end
 
     save_image(jldfile, imgA, imgB, pair_index)
 
