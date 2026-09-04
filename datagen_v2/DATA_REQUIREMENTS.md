@@ -200,6 +200,92 @@ The training data currently has no surface at all, and the failure is at the sur
 > changes the prediction by +0.03 px [−0.24, +0.35] — i.e. nothing. Treat R4 as coverage against a
 > known blind spot, not as the fix.
 
+### R6 — A near-surface SHEAR LAYER, not just a wider displacement range *(strong evidence, added 2026-09-04)*
+
+**This supersedes R4's framing and is, on the evidence, the largest single mismatch between the
+training data and the tank.** R4 called a free surface "coverage against a known blind spot". The
+measurement below says the missing surface is not a blind spot; it is the shape of the whole
+problem.
+
+Measured over **60 frames** of the traditional-PIV collection (`XCPIV/ExpLCL_1_03-200`, 200 frames
+available — against the 4 frames that carry hand-tracked points). Reproduce with
+`python scripts/characterize_tank.py --n 60`.
+
+| depth below surface | median displacement |
+|---|---|
+| 0–1 mm | **8.06 px** |
+| 1–2 mm | 7.71 |
+| 2–3 mm | 6.98 |
+| 3–4 mm | 5.84 |
+| 4–6 mm | 4.09 |
+| 6–8 mm | 2.56 |
+| 8–12 mm | 1.53 |
+| 12–16 mm | 0.96 |
+| 16–24 mm | 0.53 |
+| 24–40 mm | **0.38 px** |
+
+**The surface layer moves 21x faster than the deep water, decaying smoothly over about 8 mm.**
+
+Now compare what we generate. Our bins target a *whole-frame* median of 3–30 px in homogeneous 2-D
+periodic turbulence: displacement roughly uniform across the frame, no surface, no shear.
+
+- The tank's **whole-frame** median displacement is **0.38 px**. Our slowest bin, `med03`, is
+  already ~8x faster than that; `med30` is ~80x.
+- The tank's **top-2 mm** median is **7.88 px** — which `med09` matches almost exactly. So the
+  displacement magnitude near the surface was never the problem. The *structure* was.
+- No bin we generate has the tank's spatial arrangement at all: a fast thin skin over near-static
+  bulk.
+
+**This explains the observed error pattern better than the displacement ceiling did.** The models
+score 0.56–1.28 px at 4–8 mm depth, where the water is slow, and fail in the top 2 mm, where it is
+both fast and strongly sheared. We spent v2 tuning the *magnitude* of a field whose *shape* was
+wrong.
+
+**What v3 must reproduce**, all measured over the same 60 frames:
+
+| property | measured | note |
+|---|---|---|
+| depth profile | 21x decay over ~8 mm, table above | the central requirement |
+| air fraction | **18.1%** (17.9–18.3) | remarkably stable frame to frame |
+| surface slope | median **0.06**, p99 **0.26**, max **0.81** | R4's target range of 0.01–0.7 was about right |
+| surface motion A→B | mean **4.04 px**, max **34.6 px** | the boundary itself moves between frames |
+| particle turnover | **13–17%** whole frame | see R7 |
+| pixel scale | 0.0565 mm/px, dt 0.01 s | |
+
+**Data quality is good and is not a limiting factor**: `badFrameBool` was set on **0 of 60** frames
+and the median correlation strength is 0.86. Note though that the traditional PIV **rejects 17.7%
+of water nodes** (19.0% in the top 2 mm), so it is not a dense ground truth and must not be treated
+as one.
+
+> **Honest caveat on how to build this.** Our simulation is 2-D periodic turbulence with no free
+> surface, and adding a real one is a solver change, not a rendering change. The cheap route —
+> imposing a depth-dependent scaling on the existing velocity field and masking an air region above
+> a synthetic wavy surface — reproduces the measured profile but yields a field that is **no longer
+> divergence-free**, so `lambda_div` must be reduced or disabled for such data. That is a real
+> compromise and should be stated wherever the resulting dataset is used.
+
+### R7 — Appearing and disappearing particles *(strong evidence, added 2026-09-04)*
+
+The training data has **zero** particle turnover: every tracer visible in A is also in B. The tank
+does not work that way. Advecting every detected A-peak by the lab's own PIV field and looking for
+a B-peak within 2 px gives, over the four hand-tracked frames:
+
+| | whole frame | top 2 mm |
+|---|---|---|
+| A-particles with no match in B | **13–17%** | 29–63% |
+
+A simple count check agrees independently: frame B holds ~16% fewer detected peaks than frame A in
+all four frames.
+
+*Caveat:* the top-2 mm figures lean on the PIV field to predict where a particle should land, and
+that field is least reliable near the surface (it rejects 19% of nodes there), so some "unmatched"
+particles may reflect a bad prediction rather than an absent particle. **Treat the whole-frame
+13–17% as solid and the near-surface figures as an upper bound.**
+
+Implemented as `[imaging].dropout_range` — a fraction hidden in each frame, drawn per image pair,
+with independent masks so both frames keep expected density (1-p) and the particles present in
+both are (1-p)^2.
+
 ### R5 — Log the statistics that actually predict performance *(free, do it)*
 
 Per sample, record over the **top 2 mm band specifically**, not the whole frame:
