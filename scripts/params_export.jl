@@ -44,6 +44,17 @@ if isempty(get(ENV, "PIV_BINS", ""))
     println("export PIV_BINS='", join([@sprintf("med%02d", round(Int, m)) for m in meds], " "), "'")
 end
 
+# Same for v3, whose bins are keyed on the TOP-2mm median rather than the whole frame. The v3
+# submitter creates one output directory per name in this list, so a hardcoded copy of it there
+# would silently write the wrong folders whenever the targets are retuned — which is exactly what
+# happened when the ratio was dropped to 5x and the bins moved to 6..35 px.
+if isempty(get(ENV, "PIV_V3_BINS", ""))
+    smeds = Params.get_vector("bins.v3.surface_medians", Float64[])
+    if !isempty(smeds)
+        println("export PIV_V3_BINS='", join([@sprintf("surf%02d", round(Int, m)) for m in smeds], " "), "'")
+    end
+end
+
 for (var, key, fallback) in EXPORTS
     # Respect anything the caller already set — the environment outranks the file.
     if haskey(ENV, var) && !isempty(ENV[var])

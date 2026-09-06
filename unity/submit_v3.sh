@@ -31,8 +31,11 @@ ROOT="${PIV_OUTPUT_ROOT:?set run.output_root in params.toml}"
 STAMP=$(date +%Y-%m-%d_%H-%M-%S)
 OUT_RUN="$ROOT/run_v3_$STAMP"
 NTASKS=$(( (N + CHUNK - 1) / CHUNK ))
-# Bin names come from params.toml [bins.v3].surface_medians. Override with PIV_V3_BINS.
-BINS="${PIV_V3_BINS:-surf02 surf04 surf06 surf09 surf12 surf16 surf20 surf24}"
+# Bin names come from params.toml [bins.v3].surface_medians, via scripts/params_export.jl above.
+# There is deliberately NO hardcoded fallback: a stale copy of the list here would make this script
+# create surf02..surf24 folders while the generator writes surf06..surf35, so half the output would
+# land outside the run and half the folders would stay empty. Fail loudly instead.
+BINS="${PIV_V3_BINS:?bins.v3.surface_medians missing from params.toml (or params_export.jl failed) — check: julia --project=. scripts/params_export.jl | grep V3}"
 
 # A bare number here means $RUN was unset and the arguments shifted along one.
 case "$SRC_RUN" in

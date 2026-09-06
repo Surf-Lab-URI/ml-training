@@ -22,8 +22,8 @@ set -euo pipefail
 CHUNK=${CHUNK:-200}
 KPART=${KPART:-12000}
 BASE_SEED=${BASE_SEED:-0}
-# Bin directory names, from params.toml [bins.v3].surface_medians (top-2mm median px).
-BINS="${PIV_V3_BINS:-surf02 surf04 surf06 surf09 surf12 surf16 surf20 surf24}"
+# No bin list here on purpose: the generator reads params.toml itself, and the copy step below
+# discovers what it wrote. See the comment above that loop.
 
 export PATH="$HOME/.juliaup/bin:$PATH"
 # $HOME is on NFS and is occasionally not resolvable the instant a task starts, which makes
@@ -66,11 +66,16 @@ if [ "$n" -eq 0 ]; then echo "no combined files in range — nothing to do"; rm 
 
 "$JULIA" --project="$PROJ" "$PROJ/datagen_v3/ImageGenV3.jl" -d "$IN" -k "$KPART"
 
-# Copy outputs into the run folder, stripping the image_pairs_ prefix -> seed<N>_med<NN>.jld2
+# Copy outputs into the run folder, stripping the image_pairs_ prefix -> seed<N>_surf<NN>.jld2
+#
+# Iterate over the directories the generator ACTUALLY wrote, not over $BINS. A hardcoded or stale
+# bin list here does not fail — it silently leaves the unlisted bins behind in node-local scratch,
+# which is deleted when the task ends, so the run looks complete and is short two bins. Scanning
+# the output directory cannot drift from the generator by construction.
 shopt -s nullglob
-for bin in $BINS; do
-    src="$PIV_OUT_DIR/data/visual_v3/$bin"
-    [ -d "$src" ] || continue
+for src in "$PIV_OUT_DIR"/data/visual_v3/*/; do
+    bin=$(basename "$src")
+    [ "$bin" = "metadata" ] && continue
     mkdir -p "$OUT_RUN/$bin"
     for f in "$src"/image_pairs_*_${bin}.jld2; do
         base=$(basename "$f"); cp "$f" "$OUT_RUN/$bin/${base#image_pairs_}"
