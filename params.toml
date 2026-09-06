@@ -299,7 +299,16 @@ write_out_of_tolerance = false
 # The tank's top-2 mm median measures 7.88 px averaged over 60 frames, ranging 0.97-22.03 between
 # frames. This set brackets that range rather than extrapolating past it -- v2 reached ~91 px
 # against a tank maximum of 24 px, and it cost accuracy everywhere.
-surface_medians = [2, 4, 6, 9, 12, 16, 20, 24]
+# Starts at 6, not 2. A 2 px top-2mm target puts the deep water at 2/ratio = 0.4 px and leaves
+# 75% of the frame below 1 px -- measured, and unlearnable. v2's med03 already covers slow
+# displacement; v3 exists to teach the SHEAR STRUCTURE, so its bins sit where that structure is
+# resolvable. The tank's own top-2mm median averages 7.88 px over 60 frames, so 6-24 brackets it.
+surface_medians = [6, 9, 12, 16, 20, 24, 30, 35]
+
+# Surface/deep displacement ratio. The tank measures 21x. We use 5x deliberately: at 21x the deep
+# water falls below the ~1 px correlation limit and training collapses to predicting zero, which
+# five separate arms confirmed. See datagen_v3/ShearProfile.jl for the full argument.
+shear_ratio = 5.0
 
 # Relative tolerance on the achieved top-2 mm median. The median is linear in the scale factor, so
 # this is hit in one step rather than by iteration.

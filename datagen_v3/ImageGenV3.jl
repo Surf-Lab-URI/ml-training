@@ -53,6 +53,7 @@ using JLD2, Printf, Random, Statistics, Dates, TOML
 const SURF_TARGETS = Params.get_vector("bins.v3.surface_medians", [2.0, 4.0, 6.0, 9.0, 12.0, 16.0, 20.0, 24.0])
 const TOL     = Params.get("bins.v3.tolerance", 0.05)
 const AIRFRAC = Params.get("bins.v3.air_fraction", 0.181)     # measured 18.1%, sd 0.1
+const RATIO_CFG = Params.get("bins.v3.shear_ratio", 5.0)      # 5x by design, not the tank's 21x
 const DX_MM   = Params.get("bins.v3.dx_mm", 0.0565454946380008)
 const BIN_NAME = m -> @sprintf("surf%02d", round(Int, m))
 
@@ -133,7 +134,7 @@ for infile in infiles
         @printf("  particles: %d of %d in water, using %d\n", length(wet), length(xA0), k_use)
 
         # impose the measured profile on the simulation's own field
-        us, vs, water = apply_shear(u, v, surf, DX_MM)
+        us, vs, water = apply_shear(u, v, surf, DX_MM; ratio = RATIO_CFG)
 
         # displacement at each particle, from the SCALED field
         dxp = sample_field(us, yA .+ 1, xA .+ 1)

@@ -7,17 +7,23 @@ DX_MM = 0.0565454946380008
 MEASURED = [(0,1,8.06),(1,2,7.71),(2,3,6.98),(3,4,5.84),(4,6,4.09),
             (6,8,2.56),(8,12,1.53),(12,16,0.96),(16,24,0.53),(24,40,0.38)]
 
-println("1. shear_factor reproduces the measured profile")
-@printf("   %-12s %10s %10s %8s\n", "depth (mm)", "measured", "modelled", "ratio")
-base = 0.38                                   # the deep-water value the factor is normalised to
-errs = Float64[]
-for (lo, hi, meas) in MEASURED
-    mid = (lo + hi) / 2
-    modelled = base * shear_factor(mid)
-    r = modelled / meas; push!(errs, abs(r - 1))
-    @printf("   %-12s %10.2f %10.2f %8.2f\n", "$lo-$hi", meas, modelled, r)
+println("1. profile is a shear layer AND stays measurable")
+println("   ratio is 5x by design, not the tank's 21x -- see ShearProfile's docstring: 21x put")
+println("   83% of the water below 1 px and produced five straight training collapses.")
+@printf("   %-12s %8s %14s\n", "depth (mm)", "factor", "|d| at T=9px")
+lowest = Inf
+for d in (0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 24.0)
+    f = shear_factor(d); dd = 9 * f / shear_factor(1.0)
+    global lowest = min(lowest, dd)
+    @printf("   %-12s %8.2f %14.2f\n", d, f, dd)
 end
-@printf("   worst relative error: %.0f%%\n\n", 100maximum(errs))
+@printf("   surface/deep ratio %.1fx   deepest |d| %.2f px\n", shear_factor(0.0)/shear_factor(40.0), lowest)
+if lowest < 1.0
+    println("   FAIL: deep water below 1 px -- correlation cannot lock on, this is what broke v3")
+else
+    println("   OK: every depth stays above the ~1 px correlation limit")
+end
+println()
 
 println("2. surface geometry matches the measured slope statistics")
 W = 512; x = collect(0.0:W-1)
