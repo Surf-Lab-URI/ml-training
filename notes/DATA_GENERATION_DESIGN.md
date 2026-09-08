@@ -474,10 +474,33 @@ bulk translation, which is ≈0 for a turbulent field, and a warp-correlation te
 that trains perfectly well*, so it cannot separate good data from bad. There is no evidence the v3
 labels are wrong.
 
-**The one untested hypothesis** is loss normalisation (`normalize: true`), which divides each
-sample's error by its own mean |d| — a quantity v3 drags down with 18% air. The `d0_nonorm` arm in
-`configs/v3diag/` was built for this and has never been run against the redesigned data. If that
-also collapses, v3 needs a rethink rather than another arm.
+**Three further hypotheses were then tested against the redesigned data, and all three failed.**
+Each arm ran 8 epochs from the same seed as the collapsed run, changing one thing:
+
+| arm | changed | ep1 | ep2 | ep3 | ep4 |
+|---|---|---|---|---|---|
+| `f4` (the collapse) | — | 6.630 | 6.630 | 6.630 | 6.633 |
+| `d0_nonorm` | `normalize: false` | 6.629 | 6.631 | 6.629 | 6.629 |
+| `d6_noflip` | `flip_rows: false` | 6.632 | 6.629 | 6.631 | 6.631 |
+| `d4_surfacecrop` | both, plus `crop_bias 0.35` | 6.633 | 6.629 | 6.629 | 6.630 |
+
+Predict-zero baseline is 6.326 px. Every arm sits flat above it, indistinguishable from the
+original collapse.
+
+`flip_rows` was the strongest candidate and deserves recording as a refuted one, because the
+argument for it was good: the loader flips rows with p=0.5, which on v3 puts the air region at the
+bottom in half the samples and inverts the depth profile, and contradictory supervision of that
+kind produces exactly a flat constant output. It explained every symptom — flat prediction, rising
+loss, seeds agreeing to three decimals, v1/v2 unaffected. **It is still not the cause.**
+
+**Four hypotheses are now eliminated**: sub-pixel displacement, a non-zero `lambda_div`, loss
+normalisation, and row-flip augmentation. There is no remaining candidate, so this is a dead end
+rather than a queue of things to try. **Do not run a fifth arm.** The next step, whenever v3 is
+picked up again, is to verify the dataset itself end to end — read a sample, warp frame A by its
+own stored label and confirm it lands on frame B — rather than to keep varying the training
+configuration. Note that a warp-correlation test was attempted and discarded as non-diagnostic
+because it fails on v2 data that trains perfectly well; a valid version of that check needs to be
+designed first.
 
 ## Open questions / next steps
 
