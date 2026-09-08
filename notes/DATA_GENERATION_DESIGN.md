@@ -436,6 +436,49 @@ fine as the sparse stress-test end.
 
 ---
 
+## v3 (free surface + near-surface shear): two failed attempts — do not re-run as-is
+
+**Status as of 2026-09-08: v3 data generates correctly and trains to a collapsed model. Cause
+unknown. Do not spend more GPU time on it without a new hypothesis.**
+
+Both attempts produced a model whose output is a spatially flat field, at or slightly worse than
+the score a predict-zero model would get. The failure is reproducible and is determined by the
+data, not the optimisation: three independent seeds agreed to three decimal places.
+
+| | attempt 1 (ratio 21×) | attempt 2 (ratio 5×, bins 6–35 px) |
+|---|---|---|
+| shear ratio | 21× (the tank's measured value) | 5× |
+| worst bin sub-pixel | 83% of water below 1 px | 15.4% |
+| training | 5 arms, all pinned at val 2.650 | 3 seeds, all pinned at 6.63 |
+| predict-zero baseline | — | 6.326 px |
+| training loss | flat | **rising**: 0.435 → 0.435 → 0.461 → 0.569 |
+| `div_pred` | — | 0.00015 (healthy run: 0.093) |
+
+**The point of attempt 2 was to test the attempt-1 diagnosis, and it falsified it.** Sub-pixel
+displacement was the leading explanation for the first collapse; the redesign removed it (83% →
+15.4%) and the collapse survived unchanged. *Sub-pixel displacement is not the cause.*
+
+Ruled out, each verified rather than argued:
+
+- **`lambda_div` silently non-zero.** A divergence penalty rewards a flat field, so this was the
+  first suspect. Confirmed `0.0` in the run's own saved `config.yaml`, in both the loss block and
+  at top level.
+- **Air-region labels demanding motion from black pixels.** The labels *are* masked: measured
+  mean |d| including air over mean |d| in water = 0.82 = exactly 1 − 0.18, the air fraction.
+- **The data itself failing its gate.** It does not: medians within 1.4% of target, air fraction
+  18.0% against 18.1% measured in the tank, air exactly 0, no particles above the interface.
+
+**Not established, and explicitly not claimed:** whether the images move by what the labels say.
+Two tests were attempted and both were discarded as non-diagnostic — phase correlation measures
+bulk translation, which is ≈0 for a turbulent field, and a warp-correlation test *fails on v2 data
+that trains perfectly well*, so it cannot separate good data from bad. There is no evidence the v3
+labels are wrong.
+
+**The one untested hypothesis** is loss normalisation (`normalize: true`), which divides each
+sample's error by its own mean |d| — a quantity v3 drags down with 18% air. The `d0_nonorm` arm in
+`configs/v3diag/` was built for this and has never been run against the redesigned data. If that
+also collapses, v3 needs a rethink rather than another arm.
+
 ## Open questions / next steps
 
 1. ~~Reconcile particle count~~ **RESOLVED:** 5000 = particles *rendered per image* (`--sample`
