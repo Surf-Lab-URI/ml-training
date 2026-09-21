@@ -48,17 +48,35 @@ picked up, is to verify the dataset end to end — warp frame A by its own label
 lands on frame B — and that check has to be *designed* first, because the obvious version fails
 on v2 data that trains perfectly well.
 
-### 2. Displacement labels can be silently wrong at small `pix`
+### 2. `bugs.md` — read the checklist table, not the entries
 
-**BUG-13**: a `dp` floor at 1 silently mislabels low-`pix` bins. **BUG-14** is the root cause —
-no sub-frame interpolation, so `pix < smax` is simply unachievable and the request is quantised
-without saying so. `bugs.md` tracks 15 issues; read it before trusting a bin label.
+**The `## ✅ Status Checklist` table is authoritative.** Most detail blocks do not restate their
+status, so scanning the `### BUG-n` sections makes fixed bugs look open. **13 of 15 are fixed.**
 
-### 3. The measured limits that shaped the design
+Two are open:
 
-- **`smax ≈ 5 px`** — a displacement floor. Below it, requests cannot be honoured.
+- **BUG-6** — jet wavenumber can be zero or negative (`2DTurbulence.jl`)
+- **BUG-7** — `CombineAndConquer.jl` loads everything into RAM
+
+Three fixed ones are still worth knowing, because they changed what the data means:
+
+- **BUG-13 / BUG-14 — fixed 2026-08-13 in `datagen_v2/`** (`fc211e7`, `FracFrame.jl`). The v2
+  generator solves for a **fractional frame index**, so any target displacement is reachable and
+  bins are labelled by **measured median**, not a nominal target. Every v2 bin's median matches
+  its name to ~0.1 px. **The legacy `scripts/ImageGen.jl` still has the old behaviour** — one
+  more reason not to use it for anything new.
+- **BUG-15 — fixed.** `xlim`/`ylim` were `(0, 2π)` against a `(0, 512)` sim grid, so particles
+  teleported ~127 px per frame and the images carried no signal about the flow. **Any
+  `data/visual/pix*/` dataset generated before that fix is invalid.**
+
+### 3. The measurements that shaped the design
+
+- **`smax ≈ 5 px`** was a *displacement floor*: the motion in one saved interval, below which a
+  request could not be honoured. **BUG-14's fix removed it** — fractional-frame interpolation
+  makes any `pix` reachable from an existing campaign. Historical context for why the bins look
+  the way they do, not a current limit.
 - **Decorrelation `τ ≈ 110 frames`** — one simulation yields one useful flow, hence *many short
-  sims* rather than few long ones.
+  sims* rather than few long ones. A physical measurement; still true.
 
 ---
 
