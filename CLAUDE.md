@@ -102,7 +102,7 @@ Three fixed ones are still worth knowing, because they changed what the data mea
 | `params.toml` | every parameter for a run |
 | `notes/DATA_GENERATION_DESIGN.md` | why the design is what it is, and the v3 negative result |
 | `notes/DATA_GENERATION_REFERENCE.md` | reference for the generator |
-| `bugs.md` | 15 tracked issues; BUG-13/14 affect label correctness |
+| `bugs.md` | 15 tracked issues, 13 fixed. **Read the Status Checklist table, not the entries** |
 | `datagen_v2/` | the current renderer |
 | `datagen_v3/` | free-surface renderer — see the trap above |
 | `unity/` | Slurm scripts for the cluster |
