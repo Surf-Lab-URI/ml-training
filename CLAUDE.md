@@ -58,7 +58,7 @@ Two are open:
 - **BUG-6** — jet wavenumber can be zero or negative (`2DTurbulence.jl`)
 - **BUG-7** — `CombineAndConquer.jl` loads everything into RAM
 
-Three fixed ones are still worth knowing, because they changed what the data means:
+Three fixed ones still matter, because they changed what the data means:
 
 - **BUG-13 / BUG-14 — fixed 2026-08-13 in `datagen_v2/`** (`fc211e7`, `FracFrame.jl`). The v2
   generator solves for a **fractional frame index**, so any target displacement is reachable and
