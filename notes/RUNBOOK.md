@@ -52,7 +52,7 @@ The first script auto-launches the other two. Branch: **`dataSimulation`** (repo
 **Required env (the job scripts set these; set them too for interactive Julia):**
 ```bash
 export PATH="$HOME/.juliaup/bin:$PATH"
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot:
 export JULIA_CPU_TARGET=generic
 ```
 
@@ -140,7 +140,7 @@ Instead juliaup-installed **Julia 1.12.6** lives in `~/.juliaup`:
 curl -fsSL https://install.julialang.org | sh -s -- -y --default-channel 1.12.6
 export PATH="$HOME/.juliaup/bin:$PATH"
 # build the PORTABLE package cache once (so every compute node reuses it, no recompile):
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot:
 export JULIA_CPU_TARGET=generic
 julia --project=. -e 'using Pkg; Pkg.precompile()'
 ```

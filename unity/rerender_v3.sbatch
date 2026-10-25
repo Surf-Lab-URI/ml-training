@@ -41,7 +41,7 @@ for _try in 1 2 3 4 5; do
 done
 [ -n "$JULIA" ] || { echo "[fatal] julia unresolvable after 5 attempts on $(hostname)"; exit 1; }
 echo "[info] julia = $JULIA"
-export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}"
+export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}:"
 export JULIA_CPU_TARGET=generic
 # Image appearance and bin targets come from params.toml ([imaging.appearance], [bins.v3]).
 # PIV_LAB_APPEARANCE / PIV_V2_MEDIANS / PIV_V2_TOL / PIV_V2_LOOSE still override it if exported

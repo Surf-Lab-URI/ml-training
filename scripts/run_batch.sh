@@ -51,7 +51,7 @@ NT="${2:-${PIV_NT:-40}}"
 BASE_SEED="${PIV_BASE_SEED:-0}"
 
 # Keep the depot off $HOME for the same reason as above, when params.toml names one.
-[ -n "${PIV_JULIA_DEPOT:-}" ] && export JULIA_DEPOT_PATH="$PIV_JULIA_DEPOT"
+[ -n "${PIV_JULIA_DEPOT:-}" ] && export JULIA_DEPOT_PATH="$PIV_JULIA_DEPOT:"
 
 LOGDIR="${PIV_LOG_DIR:-$REPO/logs}"
 mkdir -p "$LOGDIR"

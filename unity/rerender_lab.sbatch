@@ -31,7 +31,7 @@ for _try in 1 2 3 4 5; do
 done
 [ -n "$JULIA" ] || { echo "[fatal] julia unresolvable after 5 attempts on $(hostname)"; exit 1; }
 echo "[info] julia = $JULIA"
-export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}"
+export JULIA_DEPOT_PATH="${PIV_JULIA_DEPOT:?set unity.julia_depot in params.toml}:"
 export JULIA_CPU_TARGET=generic
 # This job exists specifically to produce lab-matched images, so it pins the appearance rather
 # than taking params.toml's [imaging.appearance].mode — running it in "clean" mode would make the

@@ -29,7 +29,7 @@ you cannot use anyone else's install. Once, then it is done forever:
 # Add the two settings, but only once — running this twice would duplicate them.
 grep -q juliaup ~/.bashrc || cat >> ~/.bashrc <<'EOF'
 export PATH="$HOME/.juliaup/bin:$PATH"
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot:
 EOF
 source ~/.bashrc
 
@@ -41,7 +41,12 @@ julia --version || curl -fsSL https://install.julialang.org | sh
 You want **1.12.6**, which is what `Manifest.toml` was built with.
 
 The second line points at the group's shared, already-populated package depot, so there is nothing
-to install and no `Pkg.instantiate()` to wait through.
+to install and no `Pkg.instantiate()` to wait through. **Keep the trailing `:`.** It tells Julia
+to also search the depot bundled with your own install, which is where the standard library's
+precompiled caches live. Without it, Julia rebuilds the standard library into the shared depot,
+pointing at the builder's home directory, and everyone else gets `permission denied` on
+`TOML.jl`. If your `~/.bashrc` already has the line without the colon, the `grep` guard above
+will not fix it: add the `:` by hand.
 
 **3. Check the configuration resolves.** Nothing needs editing — `params.toml` already points at
 the shared dataset directory, and each campaign writes its own timestamped folder there, so several
@@ -187,7 +192,7 @@ julia --version        # julia version 1.12.6
 environment already exist on `/work` and are group-readable, so point at them and move on:
 
 ```bash
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/arup_mazumder/julia_depot:
 module load python/3.11.7
 source /work/pi_nicholas_pizzo_uri_edu/arup_mazumder/piv-venv/bin/activate
 ```
@@ -200,7 +205,7 @@ if you ever do need to add a package, do it when nobody else is mid-install.
 <summary><b>Installing from scratch instead</b> — for a new allocation, or outside this group</summary>
 
 ```bash
-export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/$USER/julia_depot
+export JULIA_DEPOT_PATH=/work/pi_nicholas_pizzo_uri_edu/$USER/julia_depot:
 julia --project=. -e 'using Pkg; Pkg.instantiate()'      # 10-20 minutes
 ```
 
@@ -447,6 +452,7 @@ per bin to pool for statistics, `--out` where to write.
 | symptom | cause and fix |
 |---|---|
 | `julia: command not found` at the prompt | Step 3 — juliaup is not on your PATH. |
+| `IOError: stat(".../juliaup/.../stdlib/v1.12/TOML/src/TOML.jl"): permission denied (EACCES)` | The shared depot holds a standard-library cache built against someone else's home. Add the trailing `:` to `JULIA_DEPOT_PATH` (step 2). If it persists, ask the depot owner to move `compiled/v1.12/<stdlib>` aside — fixed this way on 2026-10-21. |
 | `julia: command not found`, exit 127, in *some* array tasks only | `$HOME` was not resolvable when the task started. The job scripts already retry five times; if it persists, move your Julia install off `$HOME`. |
 | `set run.output_root in params.toml` | You skipped step 5. |
 | A bin directory has far fewer files than the others | Expected up to a point — a simulation that cannot reach a bin's target is skipped for that bin rather than mislabelled. A large shortfall means the target is out of reach: widen `[bins.v2].tolerance` or raise `[run].nt`. |
